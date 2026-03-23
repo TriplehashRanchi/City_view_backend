@@ -1,0 +1,602 @@
+{
+  "info": {
+    "_postman_id": "0d0a4ef2-16ff-4d70-90d5-0e466af59d7b",
+    "name": "Cityview Event - Admin Auth",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "x-admin-setup-key",
+            "value": "{{admin_setup_key}}",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Super Admin\",\n  \"email\": \"admin@example.com\",\n  \"phone\": \"9876543210\",\n  \"password\": \"Admin@123\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/auth/register",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        },
+        "description": "Creates a new admin. In local/non-production, the x-admin-setup-key header is not required. In production, enable that header and set {{admin_setup_key}}."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "",
+              "pm.test(\"Registration succeeded\", function () {",
+              "  pm.expect(json.success).to.eql(true);",
+              "  pm.expect(json.token).to.be.a(\"string\");",
+              "});",
+              "",
+              "if (json.token) {",
+              "  pm.collectionVariables.set(\"auth_token\", json.token);",
+              "}",
+              "",
+              "if (json.admin) {",
+              "  pm.collectionVariables.set(\"admin_id\", String(json.admin.id || \"\"));",
+              "  pm.collectionVariables.set(\"admin_email\", json.admin.email || \"\");",
+              "  pm.collectionVariables.set(\"admin_name\", json.admin.name || \"\");",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"Admin@123\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/auth/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        },
+        "description": "Authenticates an admin and returns a JWT token plus admin profile."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "",
+              "pm.test(\"Login succeeded\", function () {",
+              "  pm.expect(json.success).to.eql(true);",
+              "  pm.expect(json.message).to.eql(\"Login successful\");",
+              "  pm.expect(json.token).to.be.a(\"string\");",
+              "});",
+              "",
+              "if (json.token) {",
+              "  pm.collectionVariables.set(\"auth_token\", json.token);",
+              "}",
+              "",
+              "if (json.admin) {",
+              "  pm.collectionVariables.set(\"admin_id\", String(json.admin.id || \"\"));",
+              "  pm.collectionVariables.set(\"admin_email\", json.admin.email || \"\");",
+              "  pm.collectionVariables.set(\"admin_name\", json.admin.name || \"\");",
+              "}",
+              "",
+              "pm.collectionVariables.set(\"authorization_header\", \"Bearer \" + (json.token || \"\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "auth",
+            "me"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create Client",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Rohit Sharma\",\n  \"phone\": \"9876543210\",\n  \"email\": \"rohit@example.com\",\n  \"companyName\": \"Rohit Events\",\n  \"notes\": \"Premium client\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/clients",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "clients"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.data && json.data.id) pm.collectionVariables.set(\"client_id\", String(json.data.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List Clients",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/clients",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "clients"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Create Product",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Paneer Tikka\",\n  \"category\": \"Starter\",\n  \"unitPrice\": 250,\n  \"pricingType\": \"per_unit\",\n  \"description\": \"Veg starter\",\n  \"status\": \"active\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/catalog/products",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "catalog",
+            "products"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.data && json.data.id) pm.collectionVariables.set(\"product_id\", String(json.data.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Service",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Live Counter\",\n  \"pricingType\": \"fixed\",\n  \"costValue\": 5000,\n  \"description\": \"On-site live food counter\",\n  \"status\": \"active\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/catalog/services",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "catalog",
+            "services"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.data && json.data.id) pm.collectionVariables.set(\"service_id\", String(json.data.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Package",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Wedding Silver Package\",\n  \"description\": \"Starter plus service bundle\",\n  \"pricingType\": \"fixed\",\n  \"basePrice\": 25000,\n  \"minimumGuestCount\": 50,\n  \"status\": \"active\",\n  \"products\": [\n    {\n      \"productId\": {{product_id}},\n      \"quantity\": 100,\n      \"notes\": \"Starter count\"\n    }\n  ],\n  \"services\": [\n    {\n      \"serviceId\": {{service_id}},\n      \"quantity\": 1,\n      \"notes\": \"One counter\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/catalog/packages",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "catalog",
+            "packages"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.data && json.data.id) pm.collectionVariables.set(\"package_id\", String(json.data.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"clientId\": {{client_id}},\n  \"occasionType\": \"Wedding\",\n  \"eventDate\": \"2026-04-15\",\n  \"startTime\": \"18:00:00\",\n  \"endTime\": \"23:00:00\",\n  \"guestCount\": 200,\n  \"venue\": \"City View Banquet\",\n  \"notes\": \"Evening event\",\n  \"eventStatus\": \"enquiry\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/operations/events",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "operations",
+            "events"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.data && json.data.id) pm.collectionVariables.set(\"event_id\", String(json.data.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Init Quotation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventId\": {{event_id}}\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/quotations/init",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "quotations",
+            "init"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.data && json.data.id) pm.collectionVariables.set(\"quotation_id\", String(json.data.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Quotation Version",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"validUntil\": \"2026-04-20\",\n  \"termsAndConditions\": \"50% advance required.\",\n  \"customerNotes\": \"Best price for your event.\",\n  \"discountType\": \"flat\",\n  \"discountValue\": 2000,\n  \"manualAdjustment\": 0,\n  \"selectedPackages\": [\n    {\n      \"packageId\": {{package_id}},\n      \"quantity\": 1,\n      \"guestCount\": 200\n    }\n  ],\n  \"customItems\": [\n    {\n      \"catalogType\": \"service\",\n      \"catalogId\": {{service_id}},\n      \"pricingType\": \"fixed\",\n      \"quantity\": 1,\n      \"unitPriceOverride\": 4500,\n      \"descriptionOverride\": \"Discounted live counter\"\n    },\n    {\n      \"catalogType\": \"custom\",\n      \"name\": \"Decoration\",\n      \"description\": \"Stage and floral decoration\",\n      \"pricingType\": \"fixed\",\n      \"quantity\": 1,\n      \"unitPrice\": 12000,\n      \"unitLabel\": \"setup\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/quotations/{{quotation_id}}/versions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "quotations",
+            "{{quotation_id}}",
+            "versions"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json.data && json.data.id) pm.collectionVariables.set(\"version_id\", String(json.data.id));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accept Quotation Version",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"accepted\",\n  \"notes\": \"Accepted by client\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/quotations/versions/{{version_id}}/status",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "quotations",
+            "versions",
+            "{{version_id}}",
+            "status"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Dashboard Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{auth_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/reports/dashboard",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "reports",
+            "dashboard"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5001/api"
+    },
+    {
+      "key": "admin_setup_key",
+      "value": ""
+    },
+    {
+      "key": "auth_token",
+      "value": ""
+    },
+    {
+      "key": "authorization_header",
+      "value": ""
+    },
+    {
+      "key": "admin_id",
+      "value": ""
+    },
+    {
+      "key": "admin_email",
+      "value": ""
+    },
+    {
+      "key": "admin_name",
+      "value": ""
+    },
+    {
+      "key": "client_id",
+      "value": ""
+    },
+    {
+      "key": "product_id",
+      "value": ""
+    },
+    {
+      "key": "service_id",
+      "value": ""
+    },
+    {
+      "key": "package_id",
+      "value": ""
+    },
+    {
+      "key": "event_id",
+      "value": ""
+    },
+    {
+      "key": "quotation_id",
+      "value": ""
+    },
+    {
+      "key": "version_id",
+      "value": ""
+    }
+  ]
+}

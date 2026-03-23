@@ -5,6 +5,10 @@ require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes");
 const clientRoutes = require("./routes/clientRoutes");
+const catalogRoutes = require("./routes/catalogRoutes");
+const eventRoutes = require("./routes/eventRoutes");
+const quotationRoutes = require("./routes/quotationRoutes");
+const reportRoutes = require("./routes/reportRoutes");
 
 const app = express();
 
@@ -33,6 +37,10 @@ app.get("/", (req, res) => res.send("API Running"));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/clients", clientRoutes);
+app.use("/api/catalog", catalogRoutes);
+app.use("/api/operations", eventRoutes);
+app.use("/api/quotations", quotationRoutes);
+app.use("/api/reports", reportRoutes);
 
 app.use((err, req, res, next) => {
   if (err?.message === "CORS blocked") {
