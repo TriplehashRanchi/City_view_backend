@@ -9,6 +9,7 @@ const catalogRoutes = require("./routes/catalogRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const quotationRoutes = require("./routes/quotationRoutes");
 const reportRoutes = require("./routes/reportRoutes");
+const searchRoutes = require("./routes/searchRoutes");
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use("/api/catalog", catalogRoutes);
 app.use("/api/operations", eventRoutes);
 app.use("/api/quotations", quotationRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/search", searchRoutes);
 
 app.use((err, req, res, next) => {
   if (err?.message === "CORS blocked") {
