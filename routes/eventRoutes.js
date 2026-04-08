@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 const clientValidation = [
   body("name").trim().isLength({ min: 2, max: 150 }),
-  body("phone").optional({ nullable: true }).trim().isLength({ min: 8, max: 30 }),
+  body("phone").optional({ nullable: true }).trim().isLength({ min: 6, max: 30 }),
   body("email").optional({ nullable: true }).trim().isEmail(),
   body("companyName").optional({ nullable: true }).isString(),
   body("notes").optional({ nullable: true }).isString(),
@@ -20,7 +20,7 @@ const eventValidation = [
   body("clientId").optional().isInt({ min: 1 }),
   body("client").optional().isObject(),
   body("client.name").optional().trim().isLength({ min: 2, max: 150 }),
-  body("client.phone").optional({ nullable: true }).trim().isLength({ min: 8, max: 30 }),
+  body("client.phone").optional({ nullable: true }).trim().isLength({ min: 6, max: 30 }),
   body("client.email").optional({ nullable: true }).trim().isEmail(),
   body("client.companyName").optional({ nullable: true }).isString(),
   body("client.notes").optional({ nullable: true }).isString(),
