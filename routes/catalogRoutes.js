@@ -7,6 +7,8 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+const productCategories = ["starter", "main_course", "dessert", "drink", "tandoor", "salad"];
+
 const pricingTypeValidation = body("pricingType")
   .isIn(["per_person", "per_unit", "fixed"])
   .withMessage("pricingType must be per_person, per_unit, or fixed");
@@ -15,6 +17,16 @@ const statusValidation = body("status")
   .optional()
   .isIn(["active", "inactive"])
   .withMessage("status must be active or inactive");
+
+const foodTypeValidation = body("foodType")
+  .trim()
+  .isIn(["veg", "non_veg"])
+  .withMessage("foodType must be veg or non_veg");
+
+const productCategoryValidation = body("category")
+  .trim()
+  .isIn(productCategories)
+  .withMessage(`category must be one of: ${productCategories.join(", ")}`);
 
 router.get(
   "/products",
@@ -26,10 +38,11 @@ router.post(
   "/products",
   [
     body("name").trim().isLength({ min: 2, max: 180 }),
-    body("category").trim().isLength({ min: 2, max: 120 }),
+    productCategoryValidation,
+    foodTypeValidation,
     body("unitPrice").isFloat({ min: 0 }),
     pricingTypeValidation,
-    body("description").optional().isString(),
+    body("description").optional({ nullable: true }).isString(),
     statusValidation,
   ],
   catalogController.createProduct
@@ -39,10 +52,11 @@ router.patch(
   [
     param("id").isInt({ min: 1 }),
     body("name").trim().isLength({ min: 2, max: 180 }),
-    body("category").trim().isLength({ min: 2, max: 120 }),
+    productCategoryValidation,
+    foodTypeValidation,
     body("unitPrice").isFloat({ min: 0 }),
     pricingTypeValidation,
-    body("description").optional().isString(),
+    body("description").optional({ nullable: true }).isString(),
     statusValidation,
   ],
   catalogController.updateProduct
@@ -56,7 +70,7 @@ router.post(
     body("name").trim().isLength({ min: 2, max: 180 }),
     body("costValue").isFloat({ min: 0 }),
     pricingTypeValidation,
-    body("description").optional().isString(),
+    body("description").optional({ nullable: true }).isString(),
     statusValidation,
   ],
   catalogController.createService
@@ -68,7 +82,7 @@ router.patch(
     body("name").trim().isLength({ min: 2, max: 180 }),
     body("costValue").isFloat({ min: 0 }),
     pricingTypeValidation,
-    body("description").optional().isString(),
+    body("description").optional({ nullable: true }).isString(),
     statusValidation,
   ],
   catalogController.updateService
@@ -80,19 +94,17 @@ router.post(
   "/packages",
   [
     body("name").trim().isLength({ min: 2, max: 180 }),
-    body("description").optional().isString(),
-    body("basePrice").isFloat({ min: 0 }),
+    body("description").optional({ nullable: true }).isString(),
     body("minimumGuestCount").optional().isInt({ min: 1 }),
-    pricingTypeValidation,
     statusValidation,
     body("products").optional().isArray(),
     body("products.*.productId").optional().isInt({ min: 1 }),
     body("products.*.quantity").optional().isFloat({ min: 0.01 }),
-    body("products.*.notes").optional().isString(),
+    body("products.*.notes").optional({ nullable: true }).isString(),
     body("services").optional().isArray(),
     body("services.*.serviceId").optional().isInt({ min: 1 }),
     body("services.*.quantity").optional().isFloat({ min: 0.01 }),
-    body("services.*.notes").optional().isString(),
+    body("services.*.notes").optional({ nullable: true }).isString(),
   ],
   catalogController.createPackage
 );
@@ -101,19 +113,17 @@ router.patch(
   [
     param("id").isInt({ min: 1 }),
     body("name").trim().isLength({ min: 2, max: 180 }),
-    body("description").optional().isString(),
-    body("basePrice").isFloat({ min: 0 }),
+    body("description").optional({ nullable: true }).isString(),
     body("minimumGuestCount").optional().isInt({ min: 1 }),
-    pricingTypeValidation,
     statusValidation,
     body("products").optional().isArray(),
     body("products.*.productId").optional().isInt({ min: 1 }),
     body("products.*.quantity").optional().isFloat({ min: 0.01 }),
-    body("products.*.notes").optional().isString(),
+    body("products.*.notes").optional({ nullable: true }).isString(),
     body("services").optional().isArray(),
     body("services.*.serviceId").optional().isInt({ min: 1 }),
     body("services.*.quantity").optional().isFloat({ min: 0.01 }),
-    body("services.*.notes").optional().isString(),
+    body("services.*.notes").optional({ nullable: true }).isString(),
   ],
   catalogController.updatePackage
 );

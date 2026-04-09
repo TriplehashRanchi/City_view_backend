@@ -29,7 +29,7 @@ const eventValidation = [
   body("startTime").matches(/^\d{2}:\d{2}(:\d{2})?$/),
   body("endTime").optional({ nullable: true }).matches(/^\d{2}:\d{2}(:\d{2})?$/),
   body("guestCount").isInt({ min: 1, max: 100000 }),
-  body("venue").trim().isLength({ min: 2, max: 180 }),
+  body("venue").optional({ nullable: true }).trim().isLength({ min: 0, max: 180 }),
   body("notes").optional({ nullable: true }).isString(),
   body("eventStatus").optional().isIn(["enquiry", "quoted", "confirmed", "cancelled"]),
 ];

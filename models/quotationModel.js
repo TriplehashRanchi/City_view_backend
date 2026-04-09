@@ -126,11 +126,7 @@ const buildResolvedLineItems = async ({ eventRecord, selectedPackages = [], cust
   return lineItems;
 };
 
-const generateQuoteCode = async (connection) => {
-  const [rows] = await connection.query("SELECT COUNT(*) AS total FROM quotations");
-  const nextNumber = Number(rows[0].total) + 1;
-  return `QT-${String(nextNumber).padStart(6, "0")}`;
-};
+const formatQuoteCode = (id) => `QT-${String(Number(id)).padStart(6, "0")}`;
 
 exports.createQuotation = async ({ eventId, adminId }) => {
   const connection = await db.getConnection();
@@ -146,11 +142,14 @@ exports.createQuotation = async ({ eventId, adminId }) => {
       return existingRows[0].id;
     }
 
-    const quoteCode = await generateQuoteCode(connection);
+    const provisionalQuoteCode = `TMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const [result] = await connection.query(
       "INSERT INTO quotations (event_id, quote_code, created_by) VALUES (?, ?, ?)",
-      [eventId, quoteCode, adminId]
+      [eventId, provisionalQuoteCode, adminId]
     );
+
+    const quoteCode = formatQuoteCode(result.insertId);
+    await connection.query("UPDATE quotations SET quote_code = ? WHERE id = ?", [quoteCode, result.insertId]);
 
     await connection.query("UPDATE events SET event_status = 'quoted' WHERE id = ? AND event_status = 'enquiry'", [eventId]);
     await connection.commit();

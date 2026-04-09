@@ -141,7 +141,7 @@ exports.createEvent = async (req, res) => {
       startTime: req.body.startTime,
       endTime: toNullableString(req.body.endTime),
       guestCount: Number(req.body.guestCount),
-      venue: req.body.venue.trim(),
+      venue: toNullableString(req.body.venue) || "",
       notes: toNullableString(req.body.notes),
       adminId: req.admin.id,
     });
@@ -202,7 +202,7 @@ exports.updateEvent = async (req, res) => {
       startTime: req.body.startTime,
       endTime: toNullableString(req.body.endTime),
       guestCount: Number(req.body.guestCount),
-      venue: req.body.venue.trim(),
+      venue: toNullableString(req.body.venue) || "",
       notes: toNullableString(req.body.notes),
       eventStatus: req.body.eventStatus || existing.event_status,
     });

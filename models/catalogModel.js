@@ -1,4 +1,5 @@
 const db = require("./db");
+const { resolveLineTotal } = require("../utils/quotationPricing");
 
 const allowedSortColumns = {
   products: ["name", "category", "unit_price", "created_at", "updated_at"],
@@ -44,7 +45,7 @@ exports.listProducts = async ({ search, status, category, sortBy, sortOrder, lim
   });
 
   const [rows] = await db.query(
-    `SELECT id, name, category, unit_price, pricing_type, description, status, created_at, updated_at
+    `SELECT id, name, category, food_type, unit_price, pricing_type, description, status, created_at, updated_at
      FROM products
      ${whereClause}
      ORDER BY ${orderColumn} ${orderDirection}
@@ -61,11 +62,11 @@ exports.getProductById = async (id) => {
   return rows[0] || null;
 };
 
-exports.createProduct = async ({ name, category, unitPrice, pricingType, description, status, adminId }) => {
+exports.createProduct = async ({ name, category, foodType, unitPrice, pricingType, description, status, adminId }) => {
   const [result] = await db.query(
-    `INSERT INTO products (name, category, unit_price, pricing_type, description, status, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [name, category, unitPrice, pricingType, description, status, adminId]
+    `INSERT INTO products (name, category, food_type, unit_price, pricing_type, description, status, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [name, category, foodType, unitPrice, pricingType, description, status, adminId]
   );
   return result.insertId;
 };
@@ -73,9 +74,9 @@ exports.createProduct = async ({ name, category, unitPrice, pricingType, descrip
 exports.updateProduct = async (id, payload) => {
   await db.query(
     `UPDATE products
-     SET name = ?, category = ?, unit_price = ?, pricing_type = ?, description = ?, status = ?
+     SET name = ?, category = ?, food_type = ?, unit_price = ?, pricing_type = ?, description = ?, status = ?
      WHERE id = ?`,
-    [payload.name, payload.category, payload.unitPrice, payload.pricingType, payload.description, payload.status, id]
+    [payload.name, payload.category, payload.foodType, payload.unitPrice, payload.pricingType, payload.description, payload.status, id]
   );
 };
 
@@ -168,15 +169,77 @@ exports.getPackageById = async (id, connection = db) => {
   return { ...rows[0], products, services };
 };
 
-exports.createPackage = async ({ name, description, pricingType, basePrice, minimumGuestCount, status, adminId, products, services }) => {
+const buildCatalogMap = async ({ connection, table, idColumn, ids }) => {
+  if (!ids.length) return new Map();
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const [rows] = await connection.query(
+    `SELECT * FROM ${table} WHERE ${idColumn} IN (${placeholders})`,
+    ids
+  );
+
+  return new Map(rows.map((row) => [String(row.id), row]));
+};
+
+const computePackageBasePrice = async ({ connection, minimumGuestCount, products, services }) => {
+  const guestCount = Number(minimumGuestCount || 1);
+  const productIds = [...new Set(products.map((item) => Number(item.productId)).filter(Boolean))];
+  const serviceIds = [...new Set(services.map((item) => Number(item.serviceId)).filter(Boolean))];
+  const productMap = await buildCatalogMap({ connection, table: "products", idColumn: "id", ids: productIds });
+  const serviceMap = await buildCatalogMap({ connection, table: "services", idColumn: "id", ids: serviceIds });
+
+  let total = 0;
+
+  for (const item of products) {
+    const product = productMap.get(String(item.productId));
+    if (!product) {
+      const error = new Error(`Product ${item.productId} not found`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    total += resolveLineTotal({
+      pricingType: product.pricing_type,
+      unitPrice: product.unit_price,
+      quantity: item.quantity,
+      guestCount,
+    });
+  }
+
+  for (const item of services) {
+    const service = serviceMap.get(String(item.serviceId));
+    if (!service) {
+      const error = new Error(`Service ${item.serviceId} not found`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    total += resolveLineTotal({
+      pricingType: service.pricing_type,
+      unitPrice: service.cost_value,
+      quantity: item.quantity,
+      guestCount,
+    });
+  }
+
+  return Math.round((Number(total) + Number.EPSILON) * 100) / 100;
+};
+
+exports.createPackage = async ({ name, description, minimumGuestCount, status, adminId, products, services }) => {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const computedBasePrice = await computePackageBasePrice({
+      connection,
+      minimumGuestCount,
+      products,
+      services,
+    });
 
     const [result] = await connection.query(
       `INSERT INTO packages (name, description, pricing_type, base_price, minimum_guest_count, status, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [name, description, pricingType, basePrice, minimumGuestCount, status, adminId]
+      [name, description, "fixed", computedBasePrice, minimumGuestCount, status, adminId]
     );
 
     const packageId = result.insertId;
@@ -209,11 +272,18 @@ exports.updatePackage = async (id, payload) => {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const computedBasePrice = await computePackageBasePrice({
+      connection,
+      minimumGuestCount: payload.minimumGuestCount,
+      products: payload.products,
+      services: payload.services,
+    });
+
     await connection.query(
       `UPDATE packages
        SET name = ?, description = ?, pricing_type = ?, base_price = ?, minimum_guest_count = ?, status = ?
        WHERE id = ?`,
-      [payload.name, payload.description, payload.pricingType, payload.basePrice, payload.minimumGuestCount, payload.status, id]
+      [payload.name, payload.description, "fixed", computedBasePrice, payload.minimumGuestCount, payload.status, id]
     );
     await connection.query("DELETE FROM package_products WHERE package_id = ?", [id]);
     await connection.query("DELETE FROM package_services WHERE package_id = ?", [id]);

@@ -43,9 +43,21 @@ exports.createProduct = async (req, res) => {
   if (validationResponse) return validationResponse;
 
   try {
+    const category = toNullableString(req.body.category);
+    const foodType = toNullableString(req.body.foodType)?.toLowerCase();
+
+    if (!category) {
+      return res.status(400).json({ success: false, message: "Category is required" });
+    }
+
+    if (!foodType) {
+      return res.status(400).json({ success: false, message: "Food type is required" });
+    }
+
     const productId = await catalogModel.createProduct({
       name: req.body.name.trim(),
-      category: req.body.category.trim(),
+      category: category.toLowerCase(),
+      foodType,
       unitPrice: Number(req.body.unitPrice),
       pricingType: req.body.pricingType,
       description: toNullableString(req.body.description),
@@ -65,12 +77,24 @@ exports.updateProduct = async (req, res) => {
   if (validationResponse) return validationResponse;
 
   try {
+    const category = toNullableString(req.body.category);
+    const foodType = toNullableString(req.body.foodType)?.toLowerCase();
+
+    if (!category) {
+      return res.status(400).json({ success: false, message: "Category is required" });
+    }
+
+    if (!foodType) {
+      return res.status(400).json({ success: false, message: "Food type is required" });
+    }
+
     const existing = await catalogModel.getProductById(req.params.id);
     if (!existing) return res.status(404).json({ success: false, message: "Product not found" });
 
     await catalogModel.updateProduct(req.params.id, {
       name: req.body.name.trim(),
-      category: req.body.category.trim(),
+      category,
+      foodType,
       unitPrice: Number(req.body.unitPrice),
       pricingType: req.body.pricingType,
       description: toNullableString(req.body.description),
@@ -191,8 +215,6 @@ exports.createPackage = async (req, res) => {
     const packageId = await catalogModel.createPackage({
       name: req.body.name.trim(),
       description: toNullableString(req.body.description),
-      pricingType: req.body.pricingType,
-      basePrice: Number(req.body.basePrice),
       minimumGuestCount: Number(req.body.minimumGuestCount || 1),
       status: req.body.status || "active",
       adminId: req.admin.id,
@@ -218,8 +240,6 @@ exports.updatePackage = async (req, res) => {
     await catalogModel.updatePackage(req.params.id, {
       name: req.body.name.trim(),
       description: toNullableString(req.body.description),
-      pricingType: req.body.pricingType,
-      basePrice: Number(req.body.basePrice),
       minimumGuestCount: Number(req.body.minimumGuestCount || 1),
       status: req.body.status || existing.status,
       products: req.body.products || [],

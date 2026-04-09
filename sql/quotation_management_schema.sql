@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE TABLE IF NOT EXISTS products (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   name VARCHAR(180) NOT NULL,
-  category VARCHAR(120) NOT NULL,
+  category ENUM('starter', 'main_course', 'dessert', 'drink', 'tandoor', 'salad') NOT NULL,
   unit_price DECIMAL(12,2) NOT NULL,
   pricing_type ENUM('per_person', 'per_unit', 'fixed') NOT NULL,
   description TEXT NULL,
@@ -224,4 +224,3 @@ CREATE TABLE IF NOT EXISTS booking_records (
   CONSTRAINT fk_booking_quote_version FOREIGN KEY (accepted_quote_version_id) REFERENCES quotation_versions(id),
   CONSTRAINT fk_booking_created_by FOREIGN KEY (created_by) REFERENCES admins(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
