@@ -181,8 +181,33 @@ const buildCatalogMap = async ({ connection, table, idColumn, ids }) => {
   return new Map(rows.map((row) => [String(row.id), row]));
 };
 
+const normalizePackageItems = (items = [], idKey) => {
+  const mergedItems = new Map();
+
+  for (const item of items || []) {
+    const recordId = Number(item?.[idKey]);
+    if (!Number.isFinite(recordId) || recordId <= 0) continue;
+
+    if (mergedItems.has(recordId)) {
+      const existing = mergedItems.get(recordId);
+      existing.quantity = Number(existing.quantity || 0) + Number(item.quantity || 0);
+      existing.notes = existing.notes || item.notes || null;
+      continue;
+    }
+
+    mergedItems.set(recordId, {
+      ...item,
+      [idKey]: recordId,
+      quantity: Number(item.quantity || 0),
+      notes: item.notes || null,
+    });
+  }
+
+  return Array.from(mergedItems.values()).filter((item) => item.quantity > 0);
+};
+
 const computePackageBasePrice = async ({ connection, minimumGuestCount, products, services }) => {
-  const guestCount = Number(minimumGuestCount || 1);
+  const guestCount = Number(minimumGuestCount ?? 1);
   const productIds = [...new Set(products.map((item) => Number(item.productId)).filter(Boolean))];
   const serviceIds = [...new Set(services.map((item) => Number(item.serviceId)).filter(Boolean))];
   const productMap = await buildCatalogMap({ connection, table: "products", idColumn: "id", ids: productIds });
@@ -229,29 +254,31 @@ exports.createPackage = async ({ name, description, minimumGuestCount, status, a
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const normalizedProducts = normalizePackageItems(products, "productId");
+    const normalizedServices = normalizePackageItems(services, "serviceId");
     const computedBasePrice = await computePackageBasePrice({
       connection,
       minimumGuestCount,
-      products,
-      services,
+      products: normalizedProducts,
+      services: normalizedServices,
     });
 
     const [result] = await connection.query(
       `INSERT INTO packages (name, description, pricing_type, base_price, minimum_guest_count, status, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [name, description, "fixed", computedBasePrice, minimumGuestCount, status, adminId]
+      [name, description, "fixed", computedBasePrice, minimumGuestCount ?? 1, status, adminId]
     );
 
     const packageId = result.insertId;
 
-    for (const item of products) {
+    for (const item of normalizedProducts) {
       await connection.query(
         "INSERT INTO package_products (package_id, product_id, quantity, notes) VALUES (?, ?, ?, ?)",
         [packageId, item.productId, item.quantity, item.notes || null]
       );
     }
 
-    for (const item of services) {
+    for (const item of normalizedServices) {
       await connection.query(
         "INSERT INTO package_services (package_id, service_id, quantity, notes) VALUES (?, ?, ?, ?)",
         [packageId, item.serviceId, item.quantity, item.notes || null]
@@ -272,29 +299,31 @@ exports.updatePackage = async (id, payload) => {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    const normalizedProducts = normalizePackageItems(payload.products, "productId");
+    const normalizedServices = normalizePackageItems(payload.services, "serviceId");
     const computedBasePrice = await computePackageBasePrice({
       connection,
       minimumGuestCount: payload.minimumGuestCount,
-      products: payload.products,
-      services: payload.services,
+      products: normalizedProducts,
+      services: normalizedServices,
     });
 
     await connection.query(
       `UPDATE packages
        SET name = ?, description = ?, pricing_type = ?, base_price = ?, minimum_guest_count = ?, status = ?
        WHERE id = ?`,
-      [payload.name, payload.description, "fixed", computedBasePrice, payload.minimumGuestCount, payload.status, id]
+      [payload.name, payload.description, "fixed", computedBasePrice, payload.minimumGuestCount ?? 1, payload.status, id]
     );
     await connection.query("DELETE FROM package_products WHERE package_id = ?", [id]);
     await connection.query("DELETE FROM package_services WHERE package_id = ?", [id]);
 
-    for (const item of payload.products) {
+    for (const item of normalizedProducts) {
       await connection.query(
         "INSERT INTO package_products (package_id, product_id, quantity, notes) VALUES (?, ?, ?, ?)",
         [id, item.productId, item.quantity, item.notes || null]
       );
     }
-    for (const item of payload.services) {
+    for (const item of normalizedServices) {
       await connection.query(
         "INSERT INTO package_services (package_id, service_id, quantity, notes) VALUES (?, ?, ?, ?)",
         [id, item.serviceId, item.quantity, item.notes || null]

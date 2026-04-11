@@ -1,6 +1,13 @@
 const catalogModel = require("../models/catalogModel");
 const { handleValidationErrors, parsePagination, toNullableString } = require("../utils/validation");
 
+const parseMinimumGuestCount = (value, fallbackValue = undefined) => {
+  if (value === undefined || value === null || value === "") return fallbackValue;
+
+  const parsedValue = Number(value);
+  return Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+};
+
 const safeError = (res, error) => {
   console.error(error);
   return res.status(error.statusCode || 500).json({
@@ -215,7 +222,7 @@ exports.createPackage = async (req, res) => {
     const packageId = await catalogModel.createPackage({
       name: req.body.name.trim(),
       description: toNullableString(req.body.description),
-      minimumGuestCount: Number(req.body.minimumGuestCount || 1),
+      minimumGuestCount: parseMinimumGuestCount(req.body.minimumGuestCount),
       status: req.body.status || "active",
       adminId: req.admin.id,
       products: req.body.products || [],
@@ -240,7 +247,7 @@ exports.updatePackage = async (req, res) => {
     await catalogModel.updatePackage(req.params.id, {
       name: req.body.name.trim(),
       description: toNullableString(req.body.description),
-      minimumGuestCount: Number(req.body.minimumGuestCount || 1),
+      minimumGuestCount: parseMinimumGuestCount(req.body.minimumGuestCount, existing.minimum_guest_count),
       status: req.body.status || existing.status,
       products: req.body.products || [],
       services: req.body.services || [],

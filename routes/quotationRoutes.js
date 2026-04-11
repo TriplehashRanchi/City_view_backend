@@ -27,6 +27,8 @@ router.post(
     body("selectedPackages.*.quantity").optional().isFloat({ min: 0.01 }),
     body("selectedPackages.*.guestCount").optional().isInt({ min: 1 }),
     body("selectedPackages.*.unitPriceOverride").optional().isFloat({ min: 0 }),
+    body("selectedPackages.*.excludedProductIds").optional().isArray(),
+    body("selectedPackages.*.excludedProductIds.*").optional().isInt({ min: 1 }),
     body("customItems").optional().isArray(),
     body("customItems.*.catalogType").optional().isIn(["product", "service", "custom"]),
     body("customItems.*.catalogId").optional().isInt({ min: 1 }),

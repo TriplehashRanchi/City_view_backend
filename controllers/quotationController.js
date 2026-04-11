@@ -56,7 +56,10 @@ exports.createQuotationVersion = async (req, res) => {
       termsAndConditions: toNullableString(req.body.termsAndConditions),
       internalNotes: toNullableString(req.body.internalNotes),
       customerNotes: toNullableString(req.body.customerNotes),
-      selectedPackages: req.body.selectedPackages || [],
+      selectedPackages: (req.body.selectedPackages || []).map((item) => ({
+        ...item,
+        excludedProductIds: item.excludedProductIds || [],
+      })),
       customItems: req.body.customItems || [],
       discountType: req.body.discountType || "none",
       discountValue: Number(req.body.discountValue || 0),

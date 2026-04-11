@@ -15,37 +15,67 @@ const badRequest = (message) => {
   return error;
 };
 
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
 const getPackageSelectionLine = async (selection, eventGuestCount, connection) => {
   const pkg = await catalogModel.getPackageById(selection.packageId, connection);
   if (!pkg) throw notFound(`Package ${selection.packageId} not found`);
   if (pkg.status !== "active") throw badRequest(`Package ${pkg.name} is inactive`);
 
+  const excludedProductIds = new Set((selection.excludedProductIds || []).map((id) => Number(id)));
+  const includedProducts = (pkg.products || []).filter((item) => !excludedProductIds.has(Number(item.product_id)));
+  if (!includedProducts.length) {
+    throw badRequest(`Package ${pkg.name} must include at least one dish`);
+  }
+
   const guestCount = selection.guestCount || eventGuestCount;
-  if (guestCount < pkg.minimum_guest_count) {
+  if (pkg.minimum_guest_count && guestCount < pkg.minimum_guest_count) {
     throw badRequest(`Package ${pkg.name} requires at least ${pkg.minimum_guest_count} guests`);
   }
 
   const quantity = selection.quantity || 1;
-  const unitPrice = selection.unitPriceOverride ?? pkg.base_price;
+  const perPlatePrice = roundMoney(
+    includedProducts.reduce((sum, product) => {
+      return (
+        sum +
+        resolveLineTotal({
+          pricingType: product.pricing_type,
+          unitPrice: product.unit_price,
+          quantity: product.quantity || 1,
+          guestCount: 1,
+        })
+      );
+    }, 0)
+  );
+  const unitPrice = selection.unitPriceOverride ?? perPlatePrice;
   const lineTotal = resolveLineTotal({
-    pricingType: pkg.pricing_type,
+    pricingType: "per_person",
     unitPrice,
     quantity,
     guestCount,
   });
+
+  const excludedProducts = (pkg.products || []).filter((item) => excludedProductIds.has(Number(item.product_id)));
+  const descriptionParts = [
+    `Included dishes: ${includedProducts.map((item) => item.name).join(", ")}`,
+  ];
+
+  if (excludedProducts.length) {
+    descriptionParts.push(`Removed dishes: ${excludedProducts.map((item) => item.name).join(", ")}`);
+  }
 
   return {
     source_type: "package",
     catalog_type: "package",
     catalog_id: pkg.id,
     item_name: pkg.name,
-    item_description: pkg.description,
+    item_description: descriptionParts.join("\n"),
     quantity,
     guest_count: guestCount,
-    pricing_type: pkg.pricing_type,
+    pricing_type: "per_person",
     unit_price: unitPrice,
     line_total: lineTotal,
-    unit_label: selection.unitLabel || null,
+    unit_label: selection.unitLabel || "plate",
   };
 };
 
@@ -207,6 +237,7 @@ exports.createQuotationVersion = async ({
       eventId: eventRecord.id,
       guestCount: eventRecord.guest_count,
       totalLineItems: lineItems.length,
+      packageSelections: selectedPackages,
     };
 
     const [versionResult] = await connection.query(
