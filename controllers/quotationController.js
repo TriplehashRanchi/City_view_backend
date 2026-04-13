@@ -54,16 +54,15 @@ exports.createQuotationVersion = async (req, res) => {
       quotationId: Number(req.params.quotationId),
       validUntil: toNullableString(req.body.validUntil),
       termsAndConditions: toNullableString(req.body.termsAndConditions),
-      internalNotes: toNullableString(req.body.internalNotes),
-      customerNotes: toNullableString(req.body.customerNotes),
-      selectedPackages: (req.body.selectedPackages || []).map((item) => ({
-        ...item,
-        excludedProductIds: item.excludedProductIds || [],
-      })),
+      notes: toNullableString(req.body.notes),
+      sourcePackageId: req.body.sourcePackageId ? Number(req.body.sourcePackageId) : null,
+      productIds: req.body.productIds || [],
+      excludedProductIds: req.body.excludedProductIds || [],
       customItems: req.body.customItems || [],
+      perPersonPrice: Number(req.body.perPersonPrice),
+      guestCount: Number(req.body.guestCount || 0),
       discountType: req.body.discountType || "none",
       discountValue: Number(req.body.discountValue || 0),
-      manualAdjustment: Number(req.body.manualAdjustment || 0),
       adminId: req.admin.id,
     });
 
@@ -108,8 +107,6 @@ exports.updateQuotationVersionStatus = async (req, res) => {
     await quotationModel.updateQuotationVersionStatus({
       versionId: Number(req.params.versionId),
       status: req.body.status,
-      notes: toNullableString(req.body.notes),
-      adminId: req.admin.id,
     });
     const version = await quotationModel.getQuotationVersionById(req.params.versionId);
     return res.json({ success: true, message: "Quotation status updated", data: version });
@@ -130,26 +127,22 @@ exports.getPdfPayload = async (req, res) => {
         versionNumber: version.version_number,
         status: version.status,
         validUntil: version.valid_until,
+        perPersonPrice: version.per_person_price,
+        guestCount: version.guest_count,
+        subtotalAmount: version.subtotal_amount,
+        discountAmount: version.discount_amount,
         finalAmount: version.final_amount,
-        customerNotes: version.customer_notes,
+        notes: version.notes,
         termsAndConditions: version.terms_and_conditions,
+        displayAsPackage: Boolean(version.display_as_package),
+        sourcePackage: version.source_package,
         restaurantBranding: {
           name: process.env.RESTAURANT_NAME || "CityView Restaurant",
           tagline: process.env.RESTAURANT_TAGLINE || "Event Dining & Hospitality",
         },
-        event: {
-          occasionType: version.occasion_type,
-          eventDate: version.event_date,
-          startTime: version.start_time,
-          endTime: version.end_time,
-          guestCount: version.guest_count,
-          venue: version.venue,
-        },
-        client: {
-          name: version.client_name,
-          email: version.client_email,
-          phone: version.client_phone,
-        },
+        event: version.event_snapshot,
+        client: version.client_snapshot,
+        items: version.items,
       },
     });
   } catch (error) {

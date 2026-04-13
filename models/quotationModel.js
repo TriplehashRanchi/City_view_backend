@@ -1,7 +1,7 @@
 const db = require("./db");
 const catalogModel = require("./catalogModel");
 const eventModel = require("./eventModel");
-const { resolveLineTotal, computeQuoteTotals } = require("../utils/quotationPricing");
+const { computeQuoteTotals } = require("../utils/quotationPricing");
 
 const notFound = (message) => {
   const error = new Error(message);
@@ -15,148 +15,119 @@ const badRequest = (message) => {
   return error;
 };
 
-const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-
-const getPackageSelectionLine = async (selection, eventGuestCount, connection) => {
-  const pkg = await catalogModel.getPackageById(selection.packageId, connection);
-  if (!pkg) throw notFound(`Package ${selection.packageId} not found`);
-  if (pkg.status !== "active") throw badRequest(`Package ${pkg.name} is inactive`);
-
-  const excludedProductIds = new Set((selection.excludedProductIds || []).map((id) => Number(id)));
-  const includedProducts = (pkg.products || []).filter((item) => !excludedProductIds.has(Number(item.product_id)));
-  if (!includedProducts.length) {
-    throw badRequest(`Package ${pkg.name} must include at least one dish`);
-  }
-
-  const guestCount = selection.guestCount || eventGuestCount;
-  if (pkg.minimum_guest_count && guestCount < pkg.minimum_guest_count) {
-    throw badRequest(`Package ${pkg.name} requires at least ${pkg.minimum_guest_count} guests`);
-  }
-
-  const quantity = selection.quantity || 1;
-  const perPlatePrice = roundMoney(
-    includedProducts.reduce((sum, product) => {
-      return (
-        sum +
-        resolveLineTotal({
-          pricingType: product.pricing_type,
-          unitPrice: product.unit_price,
-          quantity: product.quantity || 1,
-          guestCount: 1,
-        })
-      );
-    }, 0)
-  );
-  const unitPrice = selection.unitPriceOverride ?? perPlatePrice;
-  const lineTotal = resolveLineTotal({
-    pricingType: "per_person",
-    unitPrice,
-    quantity,
-    guestCount,
-  });
-
-  const excludedProducts = (pkg.products || []).filter((item) => excludedProductIds.has(Number(item.product_id)));
-  const descriptionParts = [
-    `Included dishes: ${includedProducts.map((item) => item.name).join(", ")}`,
-  ];
-
-  if (excludedProducts.length) {
-    descriptionParts.push(`Removed dishes: ${excludedProducts.map((item) => item.name).join(", ")}`);
-  }
-
-  return {
-    source_type: "package",
-    catalog_type: "package",
-    catalog_id: pkg.id,
-    item_name: pkg.name,
-    item_description: descriptionParts.join("\n"),
-    quantity,
-    guest_count: guestCount,
-    pricing_type: "per_person",
-    unit_price: unitPrice,
-    line_total: lineTotal,
-    unit_label: selection.unitLabel || "plate",
-  };
-};
-
-const getCatalogLine = async ({ item, type, eventGuestCount, connection }) => {
-  const getter = type === "product" ? catalogModel.getProductById : catalogModel.getServiceById;
-  const record = await getter(item.catalogId);
-  if (!record) throw notFound(`${type} ${item.catalogId} not found`);
-  if (record.status !== "active") throw badRequest(`${type} ${record.name} is inactive`);
-
-  const pricingType = type === "product" ? record.pricing_type : record.pricing_type;
-  const unitPrice = item.unitPriceOverride ?? (type === "product" ? record.unit_price : record.cost_value);
-  const guestCount = item.guestCount || eventGuestCount;
-  const quantity = item.quantity || 1;
-  const lineTotal = resolveLineTotal({
-    pricingType,
-    unitPrice,
-    quantity,
-    guestCount,
-  });
-
-  return {
-    source_type: type,
-    catalog_type: type,
-    catalog_id: record.id,
-    item_name: record.name,
-    item_description: item.descriptionOverride || record.description,
-    quantity,
-    guest_count: pricingType === "per_person" ? guestCount : 0,
-    pricing_type: pricingType,
-    unit_price: unitPrice,
-    line_total: lineTotal,
-    unit_label: item.unitLabel || null,
-  };
-};
-
-const getManualLine = (item, eventGuestCount) => {
-  const guestCount = item.guestCount || eventGuestCount;
-  const lineTotal = resolveLineTotal({
-    pricingType: item.pricingType,
-    unitPrice: item.unitPrice,
-    quantity: item.quantity || 1,
-    guestCount,
-  });
-
-  return {
-    source_type: "custom",
-    catalog_type: "custom",
-    catalog_id: null,
-    item_name: item.name,
-    item_description: item.description || null,
-    quantity: item.quantity || 1,
-    guest_count: item.pricingType === "per_person" ? guestCount : 0,
-    pricing_type: item.pricingType,
-    unit_price: item.unitPrice,
-    line_total: lineTotal,
-    unit_label: item.unitLabel || null,
-  };
-};
-
-const buildResolvedLineItems = async ({ eventRecord, selectedPackages = [], customItems = [], connection }) => {
-  const lineItems = [];
-
-  for (const selection of selectedPackages) {
-    lineItems.push(await getPackageSelectionLine(selection, eventRecord.guest_count, connection));
-  }
-
-  for (const item of customItems) {
-    if (item.catalogType === "product") {
-      lineItems.push(await getCatalogLine({ item, type: "product", eventGuestCount: eventRecord.guest_count, connection }));
-    } else if (item.catalogType === "service") {
-      lineItems.push(await getCatalogLine({ item, type: "service", eventGuestCount: eventRecord.guest_count, connection }));
-    } else {
-      lineItems.push(getManualLine(item, eventRecord.guest_count));
-    }
-  }
-
-  if (!lineItems.length) throw badRequest("At least one package or line item is required");
-  return lineItems;
+const parseJson = (value) => {
+  if (!value) return null;
+  return typeof value === "string" ? JSON.parse(value) : value;
 };
 
 const formatQuoteCode = (id) => `QT-${String(Number(id)).padStart(6, "0")}`;
+
+const buildClientSnapshot = (eventRecord) => ({
+  id: eventRecord.client_id,
+  name: eventRecord.client_name,
+  phone: eventRecord.client_phone,
+  email: eventRecord.client_email,
+  companyName: eventRecord.client_company_name,
+});
+
+const buildEventSnapshot = (eventRecord, guestCountOverride = null) => ({
+  id: eventRecord.id,
+  occasionType: eventRecord.occasion_type,
+  eventDate: eventRecord.event_date,
+  startTime: eventRecord.start_time,
+  endTime: eventRecord.end_time,
+  guestCount: guestCountOverride || eventRecord.guest_count,
+  venue: eventRecord.venue,
+  notes: eventRecord.notes,
+});
+
+const buildVersionItems = async ({ sourcePackageId, productIds = [], excludedProductIds = [], customItems = [], connection }) => {
+  const items = [];
+  const seenProductIds = new Set();
+  const excludedSet = new Set((excludedProductIds || []).map((id) => Number(id)).filter((id) => id > 0));
+  let sortOrder = 1;
+
+  if (sourcePackageId) {
+    const pkg = await catalogModel.getPackageById(sourcePackageId, connection);
+    if (!pkg) throw notFound("Package not found");
+    if (pkg.status !== "active") throw badRequest("Selected package is inactive");
+
+    for (const product of pkg.products || []) {
+      const productId = Number(product.product_id);
+      if (excludedSet.has(productId)) continue;
+      if (seenProductIds.has(productId)) continue;
+      seenProductIds.add(productId);
+      items.push({
+        itemType: "product",
+        productId,
+        itemName: product.name,
+        itemCategory: product.category_name,
+        foodType: product.food_type,
+        isCustom: 0,
+        description: product.description || null,
+        sortOrder: sortOrder++,
+      });
+    }
+  }
+
+  const explicitProducts = await catalogModel.getProductsByIds(productIds, connection);
+  const foundExplicitIds = new Set(explicitProducts.map((row) => Number(row.id)));
+
+  for (const inputId of productIds || []) {
+    const numericId = Number(inputId);
+    if (!foundExplicitIds.has(numericId)) {
+      throw badRequest(`Product ${numericId} not found`);
+    }
+  }
+
+  for (const product of explicitProducts) {
+    const productId = Number(product.id);
+    if (seenProductIds.has(productId)) continue;
+    if (product.status !== "active") throw badRequest(`Product ${product.name} is inactive`);
+
+    seenProductIds.add(productId);
+    items.push({
+      itemType: "product",
+      productId,
+      itemName: product.name,
+      itemCategory: product.category_name,
+      foodType: product.food_type,
+      isCustom: 0,
+      description: product.description || null,
+      sortOrder: sortOrder++,
+    });
+  }
+
+  for (const item of customItems || []) {
+    const name = String(item?.name || "").trim();
+    if (!name) throw badRequest("Custom item name is required");
+
+    items.push({
+      itemType: "custom",
+      productId: null,
+      itemName: name,
+      itemCategory: null,
+      foodType: null,
+      isCustom: 1,
+      description: item.description ? String(item.description).trim() : null,
+      sortOrder: sortOrder++,
+    });
+  }
+
+  if (!items.length) {
+    throw badRequest("At least one product or custom item is required");
+  }
+
+  return items;
+};
+
+const shouldDisplayAsPackage = ({ sourcePackageId, productIds = [], excludedProductIds = [], customItems = [] }) =>
+  Boolean(
+    sourcePackageId &&
+      (!productIds || productIds.length === 0) &&
+      (!excludedProductIds || excludedProductIds.length === 0) &&
+      (!customItems || customItems.length === 0)
+  );
 
 exports.createQuotation = async ({ eventId, adminId }) => {
   const connection = await db.getConnection();
@@ -180,8 +151,11 @@ exports.createQuotation = async ({ eventId, adminId }) => {
 
     const quoteCode = formatQuoteCode(result.insertId);
     await connection.query("UPDATE quotations SET quote_code = ? WHERE id = ?", [quoteCode, result.insertId]);
+    await connection.query(
+      "UPDATE events SET event_status = 'quotation_created' WHERE id = ? AND event_status = 'enquiry'",
+      [eventId]
+    );
 
-    await connection.query("UPDATE events SET event_status = 'quoted' WHERE id = ? AND event_status = 'enquiry'", [eventId]);
     await connection.commit();
     return result.insertId;
   } catch (error) {
@@ -195,14 +169,16 @@ exports.createQuotation = async ({ eventId, adminId }) => {
 exports.createQuotationVersion = async ({
   quotationId,
   validUntil,
+  notes,
   termsAndConditions,
-  internalNotes,
-  customerNotes,
-  selectedPackages,
+  sourcePackageId,
+  productIds,
+  excludedProductIds,
   customItems,
+  perPersonPrice,
+  guestCount,
   discountType,
   discountValue,
-  manualAdjustment,
   adminId,
   clonedFromVersionId = null,
 }) => {
@@ -218,74 +194,75 @@ exports.createQuotationVersion = async ({
     const eventRecord = await eventModel.getEventById(quotation.event_id, connection);
     if (!eventRecord) throw notFound("Event not found");
 
-    const lineItems = await buildResolvedLineItems({
-      eventRecord,
-      selectedPackages,
+    const normalizedGuestCount = Number(guestCount || eventRecord.guest_count);
+    const items = await buildVersionItems({
+      sourcePackageId,
+      productIds,
+      excludedProductIds,
       customItems,
       connection,
     });
 
     const totals = computeQuoteTotals({
-      lineItems,
+      perPersonPrice,
+      guestCount: normalizedGuestCount,
       discountType,
       discountValue,
-      manualAdjustment,
     });
 
+    const clientSnapshot = buildClientSnapshot(eventRecord);
+    const eventSnapshot = buildEventSnapshot(eventRecord, normalizedGuestCount);
     const versionNumber = Number(quotation.current_version_number) + 1;
-    const pricingSummary = {
-      eventId: eventRecord.id,
-      guestCount: eventRecord.guest_count,
-      totalLineItems: lineItems.length,
-      packageSelections: selectedPackages,
-    };
+    const displayAsPackage = shouldDisplayAsPackage({
+      sourcePackageId,
+      productIds,
+      excludedProductIds,
+      customItems,
+    });
 
     const [versionResult] = await connection.query(
       `INSERT INTO quotation_versions (
-        quotation_id, version_number, status, valid_until, terms_and_conditions, internal_notes, customer_notes,
-        subtotal_amount, discount_type, discount_value, discount_amount, manual_adjustment, final_amount,
-        pricing_summary_json, cloned_from_version_id, created_by
-      ) VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        quotation_id, version_number, status, valid_until, source_package_id, display_as_package, client_snapshot_json, event_snapshot_json,
+        per_person_price, guest_count, subtotal_amount, discount_type, discount_value, discount_amount,
+        final_amount, notes, terms_and_conditions, cloned_from_version_id, created_by
+      ) VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         quotationId,
         versionNumber,
         validUntil,
-        termsAndConditions,
-        internalNotes,
-        customerNotes,
+        sourcePackageId,
+        displayAsPackage ? 1 : 0,
+        JSON.stringify(clientSnapshot),
+        JSON.stringify(eventSnapshot),
+        perPersonPrice,
+        normalizedGuestCount,
         totals.subtotalAmount,
         discountType,
         discountValue || 0,
         totals.discountAmount,
-        totals.manualAdjustment,
         totals.finalAmount,
-        JSON.stringify(pricingSummary),
+        notes,
+        termsAndConditions,
         clonedFromVersionId,
         adminId,
       ]
     );
 
-    for (let index = 0; index < lineItems.length; index += 1) {
-      const item = lineItems[index];
+    for (const item of items) {
       await connection.query(
-        `INSERT INTO quotation_version_line_items (
-          quotation_version_id, source_type, catalog_type, catalog_id, item_name, item_description,
-          quantity, guest_count, pricing_type, unit_price, line_total, unit_label, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO quotation_version_items (
+          quotation_version_id, item_type, product_id, item_name, item_category, food_type, is_custom, description, sort_order
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           versionResult.insertId,
-          item.source_type,
-          item.catalog_type,
-          item.catalog_id,
-          item.item_name,
-          item.item_description,
-          item.quantity,
-          item.guest_count,
-          item.pricing_type,
-          item.unit_price,
-          item.line_total,
-          item.unit_label,
-          index + 1,
+          item.itemType,
+          item.productId,
+          item.itemName,
+          item.itemCategory,
+          item.foodType,
+          item.isCustom,
+          item.description,
+          item.sortOrder,
         ]
       );
     }
@@ -316,8 +293,8 @@ exports.cloneQuotationVersion = async ({ versionId, adminId }) => {
     const version = versionRows[0];
     if (!version) throw notFound("Quotation version not found");
 
-    const [lineRows] = await connection.query(
-      "SELECT * FROM quotation_version_line_items WHERE quotation_version_id = ? ORDER BY sort_order ASC",
+    const [itemRows] = await connection.query(
+      "SELECT * FROM quotation_version_items WHERE quotation_version_id = ? ORDER BY sort_order ASC, id ASC",
       [versionId]
     );
 
@@ -329,49 +306,47 @@ exports.cloneQuotationVersion = async ({ versionId, adminId }) => {
     const newVersionNumber = Number(quotation.current_version_number) + 1;
     const [result] = await connection.query(
       `INSERT INTO quotation_versions (
-        quotation_id, version_number, status, valid_until, terms_and_conditions, internal_notes, customer_notes,
-        subtotal_amount, discount_type, discount_value, discount_amount, manual_adjustment, final_amount,
-        pricing_summary_json, cloned_from_version_id, created_by
-      ) VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        quotation_id, version_number, status, valid_until, source_package_id, display_as_package, client_snapshot_json, event_snapshot_json,
+        per_person_price, guest_count, subtotal_amount, discount_type, discount_value, discount_amount,
+        final_amount, notes, terms_and_conditions, cloned_from_version_id, created_by
+      ) VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         quotation.id,
         newVersionNumber,
         version.valid_until,
-        version.terms_and_conditions,
-        version.internal_notes,
-        version.customer_notes,
+        version.source_package_id,
+        version.display_as_package,
+        version.client_snapshot_json,
+        version.event_snapshot_json,
+        version.per_person_price,
+        version.guest_count,
         version.subtotal_amount,
         version.discount_type,
         version.discount_value,
         version.discount_amount,
-        version.manual_adjustment,
         version.final_amount,
-        version.pricing_summary_json,
+        version.notes,
+        version.terms_and_conditions,
         version.id,
         adminId,
       ]
     );
 
-    for (const line of lineRows) {
+    for (const item of itemRows) {
       await connection.query(
-        `INSERT INTO quotation_version_line_items (
-          quotation_version_id, source_type, catalog_type, catalog_id, item_name, item_description,
-          quantity, guest_count, pricing_type, unit_price, line_total, unit_label, sort_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO quotation_version_items (
+          quotation_version_id, item_type, product_id, item_name, item_category, food_type, is_custom, description, sort_order
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           result.insertId,
-          line.source_type,
-          line.catalog_type,
-          line.catalog_id,
-          line.item_name,
-          line.item_description,
-          line.quantity,
-          line.guest_count,
-          line.pricing_type,
-          line.unit_price,
-          line.line_total,
-          line.unit_label,
-          line.sort_order,
+          item.item_type,
+          item.product_id,
+          item.item_name,
+          item.item_category,
+          item.food_type,
+          item.is_custom,
+          item.description,
+          item.sort_order,
         ]
       );
     }
@@ -391,7 +366,7 @@ exports.cloneQuotationVersion = async ({ versionId, adminId }) => {
   }
 };
 
-exports.updateQuotationVersionStatus = async ({ versionId, status, adminId, notes }) => {
+exports.updateQuotationVersionStatus = async ({ versionId, status }) => {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -412,20 +387,16 @@ exports.updateQuotationVersionStatus = async ({ versionId, status, adminId, note
       sent: "sent_at",
       accepted: "accepted_at",
       rejected: "rejected_at",
-      expired: "expired_at",
       draft: null,
     }[status];
 
-    let noteValue = version.internal_notes || null;
-    if (notes) noteValue = notes;
-
     if (timestampColumn) {
       await connection.query(
-        `UPDATE quotation_versions SET status = ?, internal_notes = ?, ${timestampColumn} = NOW() WHERE id = ?`,
-        [status, noteValue, versionId]
+        `UPDATE quotation_versions SET status = ?, ${timestampColumn} = NOW() WHERE id = ?`,
+        [status, versionId]
       );
     } else {
-      await connection.query("UPDATE quotation_versions SET status = ?, internal_notes = ? WHERE id = ?", [status, noteValue, versionId]);
+      await connection.query("UPDATE quotation_versions SET status = ? WHERE id = ?", [status, versionId]);
     }
 
     await connection.query(
@@ -434,21 +405,8 @@ exports.updateQuotationVersionStatus = async ({ versionId, status, adminId, note
     );
 
     if (status === "accepted") {
-      await connection.query(
-        `UPDATE events
-         SET event_status = 'confirmed', confirmation_date = NOW(), accepted_price = ?, accepted_quote_version_id = ?
-         WHERE id = ?`,
-        [version.final_amount, versionId, quotation.event_id]
-      );
-
-      await connection.query(
-        `INSERT INTO booking_records (event_id, quotation_id, accepted_quote_version_id, confirmation_date, accepted_price, notes, created_by)
-         VALUES (?, ?, ?, NOW(), ?, ?, ?)
-         ON DUPLICATE KEY UPDATE accepted_price = VALUES(accepted_price), notes = VALUES(notes), created_by = VALUES(created_by)`,
-        [quotation.event_id, quotation.id, versionId, version.final_amount, noteValue, adminId]
-      );
-
       await connection.query("UPDATE quotations SET accepted_version_id = ? WHERE id = ?", [versionId, quotation.id]);
+      await connection.query("UPDATE events SET event_status = 'confirmed' WHERE id = ?", [quotation.event_id]);
     }
 
     await connection.commit();
@@ -474,7 +432,7 @@ exports.getQuotationById = async (quotationId) => {
   if (!rows[0]) return null;
 
   const [versions] = await db.query(
-    `SELECT id, version_number, status, valid_until, subtotal_amount, discount_amount, final_amount, created_at
+    `SELECT id, version_number, status, valid_until, per_person_price, guest_count, subtotal_amount, discount_amount, final_amount, created_at
      FROM quotation_versions
      WHERE quotation_id = ?
      ORDER BY version_number DESC`,
@@ -486,28 +444,41 @@ exports.getQuotationById = async (quotationId) => {
 
 exports.getQuotationVersionById = async (versionId) => {
   const [rows] = await db.query(
-    `SELECT qv.*, q.quote_code, q.event_id, e.occasion_type, e.event_date, e.start_time, e.end_time, e.guest_count, e.venue,
-            c.name AS client_name, c.email AS client_email, c.phone AS client_phone
+    `SELECT qv.*, q.quote_code, q.event_id
      FROM quotation_versions qv
      INNER JOIN quotations q ON q.id = qv.quotation_id
-     INNER JOIN events e ON e.id = q.event_id
-     INNER JOIN clients c ON c.id = e.client_id
      WHERE qv.id = ?
      LIMIT 1`,
     [versionId]
   );
   if (!rows[0]) return null;
 
-  const [lineItems] = await db.query(
-    `SELECT id, source_type, catalog_type, catalog_id, item_name, item_description, quantity, guest_count,
-            pricing_type, unit_price, line_total, unit_label, sort_order
-     FROM quotation_version_line_items
+  let sourcePackage = null;
+  if (rows[0].source_package_id) {
+    sourcePackage = await catalogModel.getPackageById(rows[0].source_package_id);
+  }
+
+  const [items] = await db.query(
+    `SELECT id, item_type, product_id, item_name, item_category, food_type, is_custom, description, sort_order
+     FROM quotation_version_items
      WHERE quotation_version_id = ?
      ORDER BY sort_order ASC, id ASC`,
     [versionId]
   );
 
-  return { ...rows[0], lineItems };
+  return {
+    ...rows[0],
+    client_snapshot: parseJson(rows[0].client_snapshot_json),
+    event_snapshot: parseJson(rows[0].event_snapshot_json),
+    source_package: sourcePackage
+      ? {
+          id: sourcePackage.id,
+          name: sourcePackage.name,
+          per_person_price: sourcePackage.per_person_price,
+        }
+      : null,
+    items,
+  };
 };
 
 exports.listQuotationsByEvent = async (eventId) => {

@@ -26,25 +26,17 @@ exports.globalSearch = async ({ query, limit = 5 }) => {
   );
 
   const [products] = await db.query(
-    `SELECT id, name, category, pricing_type, status
-     FROM products
-     WHERE name LIKE ? OR category LIKE ? OR description LIKE ?
-     ORDER BY updated_at DESC, created_at DESC
+    `SELECT p.id, p.name, pc.name AS category_name, p.food_type, p.base_price, p.status
+     FROM products p
+     INNER JOIN product_categories pc ON pc.id = p.category_id
+     WHERE p.name LIKE ? OR pc.name LIKE ? OR p.description LIKE ?
+     ORDER BY p.updated_at DESC, p.created_at DESC
      LIMIT ?`,
     [like, like, like, safeLimit]
   );
 
-  const [services] = await db.query(
-    `SELECT id, name, pricing_type, status
-     FROM services
-     WHERE name LIKE ? OR description LIKE ?
-     ORDER BY updated_at DESC, created_at DESC
-     LIMIT ?`,
-    [like, like, safeLimit]
-  );
-
   const [packages] = await db.query(
-    `SELECT id, name, pricing_type, status
+    `SELECT id, name, per_person_price, status
      FROM packages
      WHERE name LIKE ? OR description LIKE ?
      ORDER BY updated_at DESC, created_at DESC
@@ -68,7 +60,6 @@ exports.globalSearch = async ({ query, limit = 5 }) => {
     clients,
     events,
     products,
-    services,
     packages,
     quotations,
   };

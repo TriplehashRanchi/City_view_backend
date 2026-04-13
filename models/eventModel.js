@@ -76,7 +76,7 @@ exports.getClientDetails = async (id) => {
   if (!client) return null;
 
   const [events] = await db.query(
-    `SELECT id, occasion_type, event_date, start_time, end_time, guest_count, venue, event_status, accepted_price
+    `SELECT id, occasion_type, event_date, start_time, end_time, guest_count, venue, event_status
      FROM events
      WHERE client_id = ?
      ORDER BY event_date DESC, start_time DESC`,
@@ -152,7 +152,7 @@ exports.listEvents = async ({ search, status, dateFrom, dateTo, limit, offset })
 
   const [rows] = await db.query(
     `SELECT e.id, e.occasion_type, e.event_date, e.start_time, e.end_time, e.guest_count, e.venue, e.event_status,
-            e.accepted_price, c.name AS client_name, c.phone AS client_phone, c.email AS client_email
+            c.name AS client_name, c.phone AS client_phone, c.email AS client_email
      FROM events e
      INNER JOIN clients c ON c.id = e.client_id
      ${whereClause}

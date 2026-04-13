@@ -31,7 +31,7 @@ const eventValidation = [
   body("guestCount").isInt({ min: 1, max: 100000 }),
   body("venue").optional({ nullable: true }).trim().isLength({ min: 0, max: 180 }),
   body("notes").optional({ nullable: true }).isString(),
-  body("eventStatus").optional().isIn(["enquiry", "quoted", "confirmed", "cancelled"]),
+  body("eventStatus").optional().isIn(["enquiry", "quotation_created", "confirmed", "cancelled"]),
 ];
 
 router.post("/clients/create", clientValidation, eventController.createClient);
@@ -41,7 +41,7 @@ router.get("/clients/:id", [param("id").isInt({ min: 1 })], eventController.getC
 router.patch("/clients/:id", [param("id").isInt({ min: 1 }), ...clientValidation], eventController.updateClient);
 
 router.post("/events", eventValidation, eventController.createEvent);
-router.get("/events", [query("status").optional().isIn(["enquiry", "quoted", "confirmed", "cancelled"])], eventController.listEvents);
+router.get("/events", [query("status").optional().isIn(["enquiry", "quotation_created", "confirmed", "cancelled"])], eventController.listEvents);
 router.get("/events/:id", [param("id").isInt({ min: 1 })], eventController.getEvent);
 router.patch("/events/:id", [param("id").isInt({ min: 1 }), ...eventValidation], eventController.updateEvent);
 

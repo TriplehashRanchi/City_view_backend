@@ -49,15 +49,7 @@ exports.globalSearch = async (req, res) => {
         entityId: item.id,
         type: "product",
         title: item.name,
-        subtitle: [item.category, item.pricing_type].filter(Boolean).join(" · "),
-        status: item.status,
-      })),
-      ...grouped.services.map((item) => ({
-        id: `service-${item.id}`,
-        entityId: item.id,
-        type: "service",
-        title: item.name,
-        subtitle: item.pricing_type || "",
+        subtitle: [item.category_name, item.food_type, `Rs ${item.base_price}`].filter(Boolean).join(" · "),
         status: item.status,
       })),
       ...grouped.packages.map((item) => ({
@@ -65,7 +57,7 @@ exports.globalSearch = async (req, res) => {
         entityId: item.id,
         type: "package",
         title: item.name,
-        subtitle: item.pricing_type || "",
+        subtitle: item.per_person_price != null ? `Rs ${item.per_person_price} per person` : "",
         status: item.status,
       })),
       ...grouped.quotations.map((item) => ({

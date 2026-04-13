@@ -1,13 +1,6 @@
 const catalogModel = require("../models/catalogModel");
 const { handleValidationErrors, parsePagination, toNullableString } = require("../utils/validation");
 
-const parseMinimumGuestCount = (value, fallbackValue = undefined) => {
-  if (value === undefined || value === null || value === "") return fallbackValue;
-
-  const parsedValue = Number(value);
-  return Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
-};
-
 const safeError = (res, error) => {
   console.error(error);
   return res.status(error.statusCode || 500).json({
@@ -19,10 +12,29 @@ const safeError = (res, error) => {
 exports.listProducts = async (req, res) => {
   try {
     const { page, limit, offset } = parsePagination(req.query);
-    const result = await catalogModel.listProducts({
+   const result = await catalogModel.listProducts({
+  search: toNullableString(req.query.search),
+  status: toNullableString(req.query.status),
+  categoryId: req.query.categoryId ? Number(req.query.categoryId) : null,
+  foodType: toNullableString(req.query.foodType),
+  sortBy: toNullableString(req.query.sortBy),
+  sortOrder: toNullableString(req.query.sortOrder),
+  limit,
+  offset,
+});
+
+    return res.json({ success: true, data: result.rows, pagination: { page, limit, total: result.total } });
+  } catch (error) {
+    return safeError(res, error);
+  }
+};
+
+exports.listCategories = async (req, res) => {
+  try {
+    const { page, limit, offset } = parsePagination(req.query);
+    const result = await catalogModel.listCategories({
       search: toNullableString(req.query.search),
       status: toNullableString(req.query.status),
-      category: toNullableString(req.query.category),
       sortBy: toNullableString(req.query.sortBy),
       sortOrder: toNullableString(req.query.sortOrder),
       limit,
@@ -30,6 +42,47 @@ exports.listProducts = async (req, res) => {
     });
 
     return res.json({ success: true, data: result.rows, pagination: { page, limit, total: result.total } });
+  } catch (error) {
+    return safeError(res, error);
+  }
+};
+
+exports.createCategory = async (req, res) => {
+  const validationResponse = handleValidationErrors(req, res);
+  if (validationResponse) return validationResponse;
+
+  try {
+    const categoryId = await catalogModel.createCategory({
+      name: req.body.name.trim(),
+      slug: req.body.slug.trim().toLowerCase(),
+      status: req.body.status || "active",
+      sortOrder: Number(req.body.sortOrder || 1),
+    });
+
+    const category = await catalogModel.getCategoryById(categoryId);
+    return res.status(201).json({ success: true, message: "Category created", data: category });
+  } catch (error) {
+    return safeError(res, error);
+  }
+};
+
+exports.updateCategory = async (req, res) => {
+  const validationResponse = handleValidationErrors(req, res);
+  if (validationResponse) return validationResponse;
+
+  try {
+    const existing = await catalogModel.getCategoryById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: "Category not found" });
+
+    await catalogModel.updateCategory(req.params.id, {
+      name: req.body.name.trim(),
+      slug: req.body.slug.trim().toLowerCase(),
+      status: req.body.status || existing.status,
+      sortOrder: Number(req.body.sortOrder ?? existing.sort_order),
+    });
+
+    const category = await catalogModel.getCategoryById(req.params.id);
+    return res.json({ success: true, message: "Category updated", data: category });
   } catch (error) {
     return safeError(res, error);
   }
@@ -50,23 +103,23 @@ exports.createProduct = async (req, res) => {
   if (validationResponse) return validationResponse;
 
   try {
-    const category = toNullableString(req.body.category);
     const foodType = toNullableString(req.body.foodType)?.toLowerCase();
-
-    if (!category) {
-      return res.status(400).json({ success: false, message: "Category is required" });
-    }
 
     if (!foodType) {
       return res.status(400).json({ success: false, message: "Food type is required" });
     }
 
+    const category = await catalogModel.getCategoryById(Number(req.body.categoryId));
+    if (!category) {
+      return res.status(400).json({ success: false, message: "Category not found" });
+    }
+
     const productId = await catalogModel.createProduct({
       name: req.body.name.trim(),
-      category: category.toLowerCase(),
+      imageUrl: toNullableString(req.body.imageUrl),
+      categoryId: Number(req.body.categoryId),
       foodType,
-      unitPrice: Number(req.body.unitPrice),
-      pricingType: req.body.pricingType,
+      basePrice: Number(req.body.basePrice),
       description: toNullableString(req.body.description),
       status: req.body.status || "active",
       adminId: req.admin.id,
@@ -84,12 +137,7 @@ exports.updateProduct = async (req, res) => {
   if (validationResponse) return validationResponse;
 
   try {
-    const category = toNullableString(req.body.category);
     const foodType = toNullableString(req.body.foodType)?.toLowerCase();
-
-    if (!category) {
-      return res.status(400).json({ success: false, message: "Category is required" });
-    }
 
     if (!foodType) {
       return res.status(400).json({ success: false, message: "Food type is required" });
@@ -98,90 +146,23 @@ exports.updateProduct = async (req, res) => {
     const existing = await catalogModel.getProductById(req.params.id);
     if (!existing) return res.status(404).json({ success: false, message: "Product not found" });
 
+    const category = await catalogModel.getCategoryById(Number(req.body.categoryId));
+    if (!category) {
+      return res.status(400).json({ success: false, message: "Category not found" });
+    }
+
     await catalogModel.updateProduct(req.params.id, {
       name: req.body.name.trim(),
-      category,
+      imageUrl: toNullableString(req.body.imageUrl),
+      categoryId: Number(req.body.categoryId),
       foodType,
-      unitPrice: Number(req.body.unitPrice),
-      pricingType: req.body.pricingType,
+      basePrice: Number(req.body.basePrice),
       description: toNullableString(req.body.description),
       status: req.body.status || existing.status,
     });
 
     const product = await catalogModel.getProductById(req.params.id);
     return res.json({ success: true, message: "Product updated", data: product });
-  } catch (error) {
-    return safeError(res, error);
-  }
-};
-
-exports.listServices = async (req, res) => {
-  try {
-    const { page, limit, offset } = parsePagination(req.query);
-    const result = await catalogModel.listServices({
-      search: toNullableString(req.query.search),
-      status: toNullableString(req.query.status),
-      sortBy: toNullableString(req.query.sortBy),
-      sortOrder: toNullableString(req.query.sortOrder),
-      limit,
-      offset,
-    });
-
-    return res.json({ success: true, data: result.rows, pagination: { page, limit, total: result.total } });
-  } catch (error) {
-    return safeError(res, error);
-  }
-};
-
-exports.getService = async (req, res) => {
-  try {
-    const service = await catalogModel.getServiceById(req.params.id);
-    if (!service) return res.status(404).json({ success: false, message: "Service not found" });
-    return res.json({ success: true, data: service });
-  } catch (error) {
-    return safeError(res, error);
-  }
-};
-
-exports.createService = async (req, res) => {
-  const validationResponse = handleValidationErrors(req, res);
-  if (validationResponse) return validationResponse;
-
-  try {
-    const serviceId = await catalogModel.createService({
-      name: req.body.name.trim(),
-      pricingType: req.body.pricingType,
-      costValue: Number(req.body.costValue),
-      description: toNullableString(req.body.description),
-      status: req.body.status || "active",
-      adminId: req.admin.id,
-    });
-
-    const service = await catalogModel.getServiceById(serviceId);
-    return res.status(201).json({ success: true, message: "Service created", data: service });
-  } catch (error) {
-    return safeError(res, error);
-  }
-};
-
-exports.updateService = async (req, res) => {
-  const validationResponse = handleValidationErrors(req, res);
-  if (validationResponse) return validationResponse;
-
-  try {
-    const existing = await catalogModel.getServiceById(req.params.id);
-    if (!existing) return res.status(404).json({ success: false, message: "Service not found" });
-
-    await catalogModel.updateService(req.params.id, {
-      name: req.body.name.trim(),
-      pricingType: req.body.pricingType,
-      costValue: Number(req.body.costValue),
-      description: toNullableString(req.body.description),
-      status: req.body.status || existing.status,
-    });
-
-    const service = await catalogModel.getServiceById(req.params.id);
-    return res.json({ success: true, message: "Service updated", data: service });
   } catch (error) {
     return safeError(res, error);
   }
@@ -222,11 +203,10 @@ exports.createPackage = async (req, res) => {
     const packageId = await catalogModel.createPackage({
       name: req.body.name.trim(),
       description: toNullableString(req.body.description),
-      minimumGuestCount: parseMinimumGuestCount(req.body.minimumGuestCount),
+      perPersonPrice: Number(req.body.perPersonPrice),
       status: req.body.status || "active",
       adminId: req.admin.id,
       products: req.body.products || [],
-      services: req.body.services || [],
     });
 
     const pkg = await catalogModel.getPackageById(packageId);
@@ -247,10 +227,9 @@ exports.updatePackage = async (req, res) => {
     await catalogModel.updatePackage(req.params.id, {
       name: req.body.name.trim(),
       description: toNullableString(req.body.description),
-      minimumGuestCount: parseMinimumGuestCount(req.body.minimumGuestCount, existing.minimum_guest_count),
+      perPersonPrice: Number(req.body.perPersonPrice),
       status: req.body.status || existing.status,
       products: req.body.products || [],
-      services: req.body.services || [],
     });
 
     const pkg = await catalogModel.getPackageById(req.params.id);

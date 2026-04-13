@@ -1,13 +1,64 @@
 const db = require("./db");
-const { resolveLineTotal } = require("../utils/quotationPricing");
 
 const allowedSortColumns = {
-  products: ["name", "category", "unit_price", "created_at", "updated_at"],
-  services: ["name", "cost_value", "created_at", "updated_at"],
-  packages: ["name", "base_price", "minimum_guest_count", "created_at", "updated_at"],
+  products: {
+    name: "p.name",
+    category_name: "pc.name",
+    base_price: "p.base_price",
+    created_at: "p.created_at",
+    updated_at: "p.updated_at",
+  },
+  packages: ["name", "per_person_price", "created_at", "updated_at"],
+  categories: ["sort_order", "name", "created_at", "updated_at"],
 };
 
-const buildFilterQuery = ({ table, search, status, category, sortBy = "created_at", sortOrder = "DESC" }) => {
+const buildFilterQuery = ({ table, search, status, categoryId, foodType, sortBy = "created_at", sortOrder = "DESC" }) => {
+  const conditions = [];
+  const params = [];
+
+  if (status) {
+    if (table === "products") {
+      conditions.push("p.status = ?");
+    } else {
+      conditions.push("status = ?");
+    }
+    params.push(status);
+  }
+
+  if (search) {
+    if (table === "products") {
+      conditions.push("(p.name LIKE ? OR p.description LIKE ? OR pc.name LIKE ? OR pc.slug LIKE ?)");
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    } else {
+      conditions.push("(name LIKE ? OR description LIKE ?)");
+      params.push(`%${search}%`, `%${search}%`);
+    }
+  }
+
+  if (categoryId && table === "products") {
+  conditions.push("p.category_id = ?");
+  params.push(categoryId);
+}
+
+if (foodType && table === "products") {
+  conditions.push("p.food_type = ?");
+  params.push(foodType);
+} 
+
+  const allowed = allowedSortColumns[table] || ["created_at"];
+  const orderColumn =
+    table === "products"
+      ? allowed[sortBy] || allowed.created_at
+      : allowed.includes(sortBy)
+        ? sortBy
+        : "created_at";
+  const orderDirection = String(sortOrder).toUpperCase() === "ASC" ? "ASC" : "DESC";
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  return { whereClause, params, orderColumn, orderDirection };
+};
+
+exports.listCategories = async ({ search, status, sortBy, sortOrder, limit, offset }) => {
   const conditions = [];
   const params = [];
 
@@ -17,56 +68,118 @@ const buildFilterQuery = ({ table, search, status, category, sortBy = "created_a
   }
 
   if (search) {
-    conditions.push("(name LIKE ? OR description LIKE ?)");
+    conditions.push("(name LIKE ? OR slug LIKE ?)");
     params.push(`%${search}%`, `%${search}%`);
   }
 
-  if (category && table === "products") {
-    conditions.push("category = ?");
-    params.push(category);
-  }
-
-  const allowed = allowedSortColumns[table] || ["created_at"];
-  const orderColumn = allowed.includes(sortBy) ? sortBy : "created_at";
-  const orderDirection = String(sortOrder).toUpperCase() === "ASC" ? "ASC" : "DESC";
+  const allowed = allowedSortColumns.categories;
+  const orderColumn = allowed.includes(sortBy) ? sortBy : "sort_order";
+  const orderDirection = String(sortOrder).toUpperCase() === "DESC" ? "DESC" : "ASC";
   const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-  return { whereClause, params, orderColumn, orderDirection };
-};
-
-exports.listProducts = async ({ search, status, category, sortBy, sortOrder, limit, offset }) => {
-  const { whereClause, params, orderColumn, orderDirection } = buildFilterQuery({
-    table: "products",
-    search,
-    status,
-    category,
-    sortBy,
-    sortOrder,
-  });
-
   const [rows] = await db.query(
-    `SELECT id, name, category, food_type, unit_price, pricing_type, description, status, created_at, updated_at
-     FROM products
+    `SELECT id, name, slug, status, sort_order, created_at, updated_at
+     FROM product_categories
      ${whereClause}
      ORDER BY ${orderColumn} ${orderDirection}
      LIMIT ? OFFSET ?`,
     [...params, limit, offset]
   );
 
-  const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM products ${whereClause}`, params);
+  const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM product_categories ${whereClause}`, params);
   return { rows, total: countRows[0].total };
 };
 
-exports.getProductById = async (id) => {
-  const [rows] = await db.query("SELECT * FROM products WHERE id = ? LIMIT 1", [id]);
+exports.getCategoryById = async (id, connection = db) => {
+  const [rows] = await connection.query("SELECT * FROM product_categories WHERE id = ? LIMIT 1", [id]);
   return rows[0] || null;
 };
 
-exports.createProduct = async ({ name, category, foodType, unitPrice, pricingType, description, status, adminId }) => {
+exports.createCategory = async ({ name, slug, status, sortOrder }) => {
   const [result] = await db.query(
-    `INSERT INTO products (name, category, food_type, unit_price, pricing_type, description, status, created_by)
+    `INSERT INTO product_categories (name, slug, status, sort_order)
+     VALUES (?, ?, ?, ?)`,
+    [name, slug, status, sortOrder]
+  );
+  return result.insertId;
+};
+
+exports.updateCategory = async (id, payload) => {
+  await db.query(
+    `UPDATE product_categories
+     SET name = ?, slug = ?, status = ?, sort_order = ?
+     WHERE id = ?`,
+    [payload.name, payload.slug, payload.status, payload.sortOrder, id]
+  );
+};
+
+exports.listProducts = async ({ search, status, categoryId, foodType, sortBy, sortOrder, limit, offset }) => {
+ const { whereClause, params, orderColumn, orderDirection } = buildFilterQuery({
+  table: "products",
+  search,
+  status,
+  categoryId,
+  foodType,
+  sortBy,
+  sortOrder,
+});
+
+  const [rows] = await db.query(
+    `SELECT p.id, p.name, p.image_url, p.category_id, pc.name AS category_name, pc.slug AS category_slug,
+            p.food_type, p.base_price, p.description, p.status, p.created_at, p.updated_at
+     FROM products p
+     INNER JOIN product_categories pc ON pc.id = p.category_id
+     ${whereClause}
+     ORDER BY ${orderColumn} ${orderDirection}
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
+
+  const [countRows] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM products p
+     INNER JOIN product_categories pc ON pc.id = p.category_id
+     ${whereClause}`,
+    params
+  );
+  return { rows, total: countRows[0].total };
+};
+
+exports.getProductById = async (id, connection = db) => {
+  const [rows] = await connection.query(
+    `SELECT p.*, pc.name AS category_name, pc.slug AS category_slug
+     FROM products p
+     INNER JOIN product_categories pc ON pc.id = p.category_id
+     WHERE p.id = ?
+     LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+};
+
+exports.getProductsByIds = async (ids, connection = db) => {
+  const normalizedIds = [...new Set((ids || []).map((id) => Number(id)).filter((id) => id > 0))];
+  if (!normalizedIds.length) return [];
+
+  const placeholders = normalizedIds.map(() => "?").join(", ");
+  const [rows] = await connection.query(
+    `SELECT p.id, p.name, p.image_url, p.category_id, pc.name AS category_name, pc.slug AS category_slug,
+            p.food_type, p.base_price, p.description, p.status
+     FROM products p
+     INNER JOIN product_categories pc ON pc.id = p.category_id
+     WHERE p.id IN (${placeholders})
+     ORDER BY FIELD(p.id, ${placeholders})`,
+    [...normalizedIds, ...normalizedIds]
+  );
+
+  return rows;
+};
+
+exports.createProduct = async ({ name, imageUrl, categoryId, foodType, basePrice, description, status, adminId }) => {
+  const [result] = await db.query(
+    `INSERT INTO products (name, image_url, category_id, food_type, base_price, description, status, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [name, category, foodType, unitPrice, pricingType, description, status, adminId]
+    [name, imageUrl, categoryId, foodType, basePrice, description, status, adminId]
   );
   return result.insertId;
 };
@@ -74,53 +187,9 @@ exports.createProduct = async ({ name, category, foodType, unitPrice, pricingTyp
 exports.updateProduct = async (id, payload) => {
   await db.query(
     `UPDATE products
-     SET name = ?, category = ?, food_type = ?, unit_price = ?, pricing_type = ?, description = ?, status = ?
+     SET name = ?, image_url = ?, category_id = ?, food_type = ?, base_price = ?, description = ?, status = ?
      WHERE id = ?`,
-    [payload.name, payload.category, payload.foodType, payload.unitPrice, payload.pricingType, payload.description, payload.status, id]
-  );
-};
-
-exports.listServices = async ({ search, status, sortBy, sortOrder, limit, offset }) => {
-  const { whereClause, params, orderColumn, orderDirection } = buildFilterQuery({
-    table: "services",
-    search,
-    status,
-    sortBy,
-    sortOrder,
-  });
-
-  const [rows] = await db.query(
-    `SELECT id, name, pricing_type, cost_value, description, status, created_at, updated_at
-     FROM services
-     ${whereClause}
-     ORDER BY ${orderColumn} ${orderDirection}
-     LIMIT ? OFFSET ?`,
-    [...params, limit, offset]
-  );
-  const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM services ${whereClause}`, params);
-  return { rows, total: countRows[0].total };
-};
-
-exports.getServiceById = async (id) => {
-  const [rows] = await db.query("SELECT * FROM services WHERE id = ? LIMIT 1", [id]);
-  return rows[0] || null;
-};
-
-exports.createService = async ({ name, pricingType, costValue, description, status, adminId }) => {
-  const [result] = await db.query(
-    `INSERT INTO services (name, pricing_type, cost_value, description, status, created_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [name, pricingType, costValue, description, status, adminId]
-  );
-  return result.insertId;
-};
-
-exports.updateService = async (id, payload) => {
-  await db.query(
-    `UPDATE services
-     SET name = ?, pricing_type = ?, cost_value = ?, description = ?, status = ?
-     WHERE id = ?`,
-    [payload.name, payload.pricingType, payload.costValue, payload.description, payload.status, id]
+    [payload.name, payload.imageUrl, payload.categoryId, payload.foodType, payload.basePrice, payload.description, payload.status, id]
   );
 };
 
@@ -134,7 +203,7 @@ exports.listPackages = async ({ search, status, sortBy, sortOrder, limit, offset
   });
 
   const [rows] = await db.query(
-    `SELECT id, name, description, pricing_type, base_price, minimum_guest_count, status, created_at, updated_at
+    `SELECT id, name, description, per_person_price, status, created_at, updated_at
      FROM packages
      ${whereClause}
      ORDER BY ${orderColumn} ${orderDirection}
@@ -150,143 +219,75 @@ exports.getPackageById = async (id, connection = db) => {
   if (!rows[0]) return null;
 
   const [products] = await connection.query(
-    `SELECT pp.id, pp.product_id, pp.quantity, pp.notes, p.name, p.category, p.unit_price, p.pricing_type, p.status
+    `SELECT pp.id, pp.product_id, pp.sort_order, p.name, p.image_url, p.category_id, pc.name AS category_name, pc.slug AS category_slug,
+            p.food_type, p.base_price, p.description, p.status
      FROM package_products pp
      INNER JOIN products p ON p.id = pp.product_id
+     INNER JOIN product_categories pc ON pc.id = p.category_id
      WHERE pp.package_id = ?
-     ORDER BY pp.id ASC`,
-    [id]
-  );
-  const [services] = await connection.query(
-    `SELECT ps.id, ps.service_id, ps.quantity, ps.notes, s.name, s.cost_value, s.pricing_type, s.status
-     FROM package_services ps
-     INNER JOIN services s ON s.id = ps.service_id
-     WHERE ps.package_id = ?
-     ORDER BY ps.id ASC`,
+     ORDER BY pp.sort_order ASC, pp.id ASC`,
     [id]
   );
 
-  return { ...rows[0], products, services };
+  return { ...rows[0], products };
 };
 
-const buildCatalogMap = async ({ connection, table, idColumn, ids }) => {
-  if (!ids.length) return new Map();
+const normalizePackageProducts = (products = []) => {
+  const normalized = [];
+  const seen = new Set();
 
-  const placeholders = ids.map(() => "?").join(", ");
-  const [rows] = await connection.query(
-    `SELECT * FROM ${table} WHERE ${idColumn} IN (${placeholders})`,
-    ids
-  );
+  for (let index = 0; index < (products || []).length; index += 1) {
+    const productId = Number(products[index]?.productId);
+    if (!Number.isFinite(productId) || productId <= 0 || seen.has(productId)) continue;
 
-  return new Map(rows.map((row) => [String(row.id), row]));
-};
-
-const normalizePackageItems = (items = [], idKey) => {
-  const mergedItems = new Map();
-
-  for (const item of items || []) {
-    const recordId = Number(item?.[idKey]);
-    if (!Number.isFinite(recordId) || recordId <= 0) continue;
-
-    if (mergedItems.has(recordId)) {
-      const existing = mergedItems.get(recordId);
-      existing.quantity = Number(existing.quantity || 0) + Number(item.quantity || 0);
-      existing.notes = existing.notes || item.notes || null;
-      continue;
-    }
-
-    mergedItems.set(recordId, {
-      ...item,
-      [idKey]: recordId,
-      quantity: Number(item.quantity || 0),
-      notes: item.notes || null,
+    seen.add(productId);
+    normalized.push({
+      productId,
+      sortOrder: Number(products[index]?.sortOrder) > 0 ? Number(products[index].sortOrder) : index + 1,
     });
   }
 
-  return Array.from(mergedItems.values()).filter((item) => item.quantity > 0);
+  return normalized;
 };
 
-const computePackageBasePrice = async ({ connection, minimumGuestCount, products, services }) => {
-  const guestCount = Number(minimumGuestCount ?? 1);
-  const productIds = [...new Set(products.map((item) => Number(item.productId)).filter(Boolean))];
-  const serviceIds = [...new Set(services.map((item) => Number(item.serviceId)).filter(Boolean))];
-  const productMap = await buildCatalogMap({ connection, table: "products", idColumn: "id", ids: productIds });
-  const serviceMap = await buildCatalogMap({ connection, table: "services", idColumn: "id", ids: serviceIds });
+const assertProductsExist = async (connection, items) => {
+  const productIds = items.map((item) => item.productId);
+  if (!productIds.length) return;
 
-  let total = 0;
+  const records = await exports.getProductsByIds(productIds, connection);
+  const foundIds = new Set(records.map((row) => Number(row.id)));
+  const missingId = productIds.find((id) => !foundIds.has(id));
 
-  for (const item of products) {
-    const product = productMap.get(String(item.productId));
-    if (!product) {
-      const error = new Error(`Product ${item.productId} not found`);
-      error.statusCode = 400;
-      throw error;
-    }
-
-    total += resolveLineTotal({
-      pricingType: product.pricing_type,
-      unitPrice: product.unit_price,
-      quantity: item.quantity,
-      guestCount,
-    });
+  if (missingId) {
+    const error = new Error(`Product ${missingId} not found`);
+    error.statusCode = 400;
+    throw error;
   }
-
-  for (const item of services) {
-    const service = serviceMap.get(String(item.serviceId));
-    if (!service) {
-      const error = new Error(`Service ${item.serviceId} not found`);
-      error.statusCode = 400;
-      throw error;
-    }
-
-    total += resolveLineTotal({
-      pricingType: service.pricing_type,
-      unitPrice: service.cost_value,
-      quantity: item.quantity,
-      guestCount,
-    });
-  }
-
-  return Math.round((Number(total) + Number.EPSILON) * 100) / 100;
 };
 
-exports.createPackage = async ({ name, description, minimumGuestCount, status, adminId, products, services }) => {
+exports.createPackage = async ({ name, description, perPersonPrice, status, adminId, products }) => {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const normalizedProducts = normalizePackageItems(products, "productId");
-    const normalizedServices = normalizePackageItems(services, "serviceId");
-    const computedBasePrice = await computePackageBasePrice({
-      connection,
-      minimumGuestCount,
-      products: normalizedProducts,
-      services: normalizedServices,
-    });
+
+    const normalizedProducts = normalizePackageProducts(products);
+    await assertProductsExist(connection, normalizedProducts);
 
     const [result] = await connection.query(
-      `INSERT INTO packages (name, description, pricing_type, base_price, minimum_guest_count, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [name, description, "fixed", computedBasePrice, minimumGuestCount ?? 1, status, adminId]
+      `INSERT INTO packages (name, description, per_person_price, status, created_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [name, description, perPersonPrice, status, adminId]
     );
-
-    const packageId = result.insertId;
 
     for (const item of normalizedProducts) {
       await connection.query(
-        "INSERT INTO package_products (package_id, product_id, quantity, notes) VALUES (?, ?, ?, ?)",
-        [packageId, item.productId, item.quantity, item.notes || null]
-      );
-    }
-
-    for (const item of normalizedServices) {
-      await connection.query(
-        "INSERT INTO package_services (package_id, service_id, quantity, notes) VALUES (?, ?, ?, ?)",
-        [packageId, item.serviceId, item.quantity, item.notes || null]
+        "INSERT INTO package_products (package_id, product_id, sort_order) VALUES (?, ?, ?)",
+        [result.insertId, item.productId, item.sortOrder]
       );
     }
 
     await connection.commit();
-    return packageId;
+    return result.insertId;
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -299,34 +300,23 @@ exports.updatePackage = async (id, payload) => {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const normalizedProducts = normalizePackageItems(payload.products, "productId");
-    const normalizedServices = normalizePackageItems(payload.services, "serviceId");
-    const computedBasePrice = await computePackageBasePrice({
-      connection,
-      minimumGuestCount: payload.minimumGuestCount,
-      products: normalizedProducts,
-      services: normalizedServices,
-    });
+
+    const normalizedProducts = normalizePackageProducts(payload.products);
+    await assertProductsExist(connection, normalizedProducts);
 
     await connection.query(
       `UPDATE packages
-       SET name = ?, description = ?, pricing_type = ?, base_price = ?, minimum_guest_count = ?, status = ?
+       SET name = ?, description = ?, per_person_price = ?, status = ?
        WHERE id = ?`,
-      [payload.name, payload.description, "fixed", computedBasePrice, payload.minimumGuestCount ?? 1, payload.status, id]
+      [payload.name, payload.description, payload.perPersonPrice, payload.status, id]
     );
+
     await connection.query("DELETE FROM package_products WHERE package_id = ?", [id]);
-    await connection.query("DELETE FROM package_services WHERE package_id = ?", [id]);
 
     for (const item of normalizedProducts) {
       await connection.query(
-        "INSERT INTO package_products (package_id, product_id, quantity, notes) VALUES (?, ?, ?, ?)",
-        [id, item.productId, item.quantity, item.notes || null]
-      );
-    }
-    for (const item of normalizedServices) {
-      await connection.query(
-        "INSERT INTO package_services (package_id, service_id, quantity, notes) VALUES (?, ?, ?, ?)",
-        [id, item.serviceId, item.quantity, item.notes || null]
+        "INSERT INTO package_products (package_id, product_id, sort_order) VALUES (?, ?, ?)",
+        [id, item.productId, item.sortOrder]
       );
     }
 
