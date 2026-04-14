@@ -1,4 +1,5 @@
 const quotationModel = require("../models/quotationModel");
+const { buildQuotationPdf } = require("../utils/quotationPdf");
 const { handleValidationErrors, toNullableString } = require("../utils/validation");
 
 const safeError = (res, error) => {
@@ -6,6 +7,27 @@ const safeError = (res, error) => {
   return res.status(error.statusCode || 500).json({
     success: false,
     message: error.statusCode ? error.message : "Server error",
+  });
+};
+
+const getBranding = () => ({
+  name: process.env.RESTAURANT_NAME || "CityView Restaurant",
+  tagline: process.env.RESTAURANT_TAGLINE || "Event Dining & Hospitality",
+  address: process.env.RESTAURANT_ADDRESS || "",
+  email: process.env.RESTAURANT_EMAIL || "",
+  phone: process.env.RESTAURANT_PHONE || "",
+  website: process.env.RESTAURANT_WEBSITE || "",
+});
+
+const sendQuotationDownload = (res, version) => {
+  return buildQuotationPdf({
+    version,
+    branding: getBranding(),
+  }).then(({ buffer, fileName }) => {
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Length", buffer.length);
+    return res.send(buffer);
   });
 };
 
@@ -136,15 +158,43 @@ exports.getPdfPayload = async (req, res) => {
         termsAndConditions: version.terms_and_conditions,
         displayAsPackage: Boolean(version.display_as_package),
         sourcePackage: version.source_package,
-        restaurantBranding: {
-          name: process.env.RESTAURANT_NAME || "CityView Restaurant",
-          tagline: process.env.RESTAURANT_TAGLINE || "Event Dining & Hospitality",
-        },
+        restaurantBranding: getBranding(),
         event: version.event_snapshot,
         client: version.client_snapshot,
         items: version.items,
       },
     });
+  } catch (error) {
+    return safeError(res, error);
+  }
+};
+
+exports.downloadQuotation = async (req, res) => {
+  try {
+    const quotation = await quotationModel.getQuotationById(req.params.id);
+    if (!quotation) return res.status(404).json({ success: false, message: "Quotation not found" });
+
+    let targetVersionId = quotation.latest_version_id;
+    if (req.query.versionId !== undefined) {
+      targetVersionId = Number(req.query.versionId);
+      if (!Number.isInteger(targetVersionId) || targetVersionId < 1) {
+        return res.status(400).json({ success: false, message: "Invalid versionId" });
+      }
+    }
+
+    if (!targetVersionId) {
+      return res.status(400).json({ success: false, message: "No quotation version available for download" });
+    }
+
+    const version = await quotationModel.getQuotationVersionById(targetVersionId);
+    if (!version) {
+      return res.status(404).json({ success: false, message: "Quotation version not found" });
+    }
+    if (Number(version.quotation_id) !== Number(quotation.id)) {
+      return res.status(400).json({ success: false, message: "Requested version does not belong to this quotation" });
+    }
+
+    return await sendQuotationDownload(res, version);
   } catch (error) {
     return safeError(res, error);
   }

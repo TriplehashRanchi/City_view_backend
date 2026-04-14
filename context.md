@@ -56,6 +56,7 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
   - initialize quotation
   - list quotations by event
   - fetch quotation
+  - download quotation PDF by quotation id, defaulting to latest version and optionally targeting a specific version
   - create version
   - clone version
   - fetch version

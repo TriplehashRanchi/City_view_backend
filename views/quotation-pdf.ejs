@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= version.quote_code %> Quotation</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 52px 18px 24px 18px;
+      }
+
+      @page:first {
+        margin-top: 18px;
+      }
+
+      :root {
+        --paper: #fbf7ef;
+        --accent: #e36b52;
+        --ink: #1d1d1d;
+        --muted: #666666;
+        --line: #d9d1c5;
+        --soft: #f4efe7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background: #ffffff;
+      }
+
+      .page {
+        padding: 0 18px 24px;
+      }
+
+      .header {
+        background: var(--paper);
+        margin: 0 -34px;
+        padding: 30px 34px 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .brand-name {
+        margin: 0;
+        color: var(--accent);
+        font-size: 40px;
+        line-height: 0.95;
+        font-weight: 500;
+      }
+
+      .brand-tagline {
+        margin: 6px 0 0 3px;
+        color: var(--accent);
+        font-size: 12px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+
+      .contact {
+        max-width: 220px;
+        text-align: right;
+        color: var(--muted);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .title {
+        margin: 26px 0 28px;
+        text-align: center;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 24px;
+        font-weight: 600;
+        ;
+      }
+
+      .cards {
+        display: flex;
+        gap: 18px;
+        margin-bottom: 26px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .card {
+        flex: 1;
+        border: 2px solid #e4dccf;
+        border-radius: 12px;
+        padding: 30px 30px 16px;
+      }
+
+      .card-title {
+        margin: 0 0 10px;
+        color: var(--accent);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .card-line {
+        margin: 0 0 10px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.25;
+      }
+
+      .card-line strong {
+        font-weight: 700;
+      }
+
+      .meta {
+        margin-bottom: 16px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .meta strong {
+        font-weight: 700;
+      }
+
+      .body-text {
+        margin: 0 0 20px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        margin-bottom: 22px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 12.5px;
+        break-inside: auto;
+        page-break-inside: auto;
+      }
+
+      thead th {
+        background: var(--soft);
+        color: #7d858d;
+        font-weight: 800;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 10px 10px;
+        vertical-align: top;
+        word-break: break-word;
+        text-align: center;
+      }
+
+      .col-item { width: 40%; }
+      .col-category { width: 32%; }
+      .col-food-type { width: 28%; }
+
+      td.center {
+        text-align: center;
+      }
+
+      .summary {
+        margin: 26px 0 24px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .summary-title {
+        margin: 0 0 14px;
+        font-size: 28px;
+        font-weight: 500;
+      }
+
+      .summary-box {
+        background: #f5f4f1;
+        padding: 18px 22px;
+        font-family: Arial, Helvetica, sans-serif;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .summary-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 10px 0;
+        font-size: 13px;
+      }
+
+      .summary-row strong {
+        font-weight: 800;
+      }
+
+      .notes {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.7;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .signature {
+        margin-top: 28px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.8;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="header">
+        <div>
+          <h1 class="brand-name"><%= branding.name || "Restaurant" %></h1>
+         </div>
+        <div class="contact">
+          <% [branding.address, branding.email, branding.phone, branding.website].filter(Boolean).forEach(function(line) { %>
+            <div><%= line %></div>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="title">Restaurant Quotation Letter</div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-title">Prepared For</div>
+          <% if (client.name) { %><div class="card-line"><strong>Name:</strong> <%= client.name %></div><% } %>
+          <% if (client.email) { %><div class="card-line"><strong>Email:</strong> <%= client.email %></div><% } %>
+          <% if (client.phone) { %><div class="card-line"><strong>Phone:</strong> <%= client.phone %></div><% } %>
+          <% if (client.companyName) { %><div class="card-line"><strong>Company:</strong> <%= client.companyName %></div><% } %>
+        </div>
+        <div class="card">
+          <div class="card-title">Event Details</div>
+          <% if (event.occasionType) { %><div class="card-line"><strong>Occasion:</strong> <%= event.occasionType %></div><% } %>
+          <% if (event.eventDate) { %><div class="card-line"><strong>Date:</strong> <%= formatDate(event.eventDate) %></div><% } %>
+          <% if (event.venue) { %><div class="card-line"><strong>Venue:</strong> <%= event.venue %></div><% } %>
+          <% if (event.guestCount) { %><div class="card-line"><strong>Guests:</strong> <%= event.guestCount %></div><% } %>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div><strong>Date:</strong> <%= issueDate %></div>
+        <div><strong>Quotation Ref:</strong> <%= version.quote_code || "-" %></div>
+        <div><strong>Version / Status:</strong> V<%= version.version_number || 1 %> / <%= statusLabel %></div>
+        <% if (version.valid_until) { %>
+          <div><strong>Valid Until:</strong> <%= validUntil %></div>
+        <% } %>
+      </div>
+
+      <p class="body-text">Dear <%= greetingName %>,</p>
+      <p class="body-text">
+        Thank you for considering <%= branding.name || "our restaurant" %> for your upcoming
+        <%= introOccasion %>. We are pleased to share the quotation prepared for your event.
+        Below is a clear summary of the selected items and the estimated pricing based on the
+        current requirements provided by you.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th class="col-item">Item</th>
+            <th class="col-category">Category</th>
+            <th class="col-food-type">Food Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% items.forEach(function(item) { %>
+            <tr>
+              <td><%= item.item_name || "-" %></td>
+              <td><%= item.item_category || "-" %></td>
+              <td><%= item.food_type || "-" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+
+      <div class="summary">
+        <h2 class="summary-title">Price Summary</h2>
+        <div class="summary-box">
+          <div class="summary-row">
+            <span>Per Person</span>
+            <span><%= perPersonPrice %></span>
+          </div>
+          <div class="summary-row">
+            <span>Guest Count</span>
+            <span><%= version.guest_count || 0 %></span>
+          </div>
+          <div class="summary-row">
+            <span>Subtotal</span>
+            <span><%= subtotalAmount %></span>
+          </div>
+          <div class="summary-row">
+            <span>Discount</span>
+            <span><%= discountAmount %></span>
+          </div>
+          <div class="summary-row">
+            <strong>Final Amount</strong>
+            <strong><%= finalAmount %></strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <p>
+          This quotation has been prepared based on the current event details shared with us for
+          your <%= event.occasionType || "event" %>. Any changes in guest count, menu selection,
+          service scope, or customization requirements may result in a revised quotation.
+        </p>
+        <% if (version.notes) { %>
+          <p><strong>Additional Notes:</strong> <%= version.notes %></p>
+        <% } %>
+        <% if (version.terms_and_conditions) { %>
+          <p><strong>Terms & Conditions:</strong> <%= version.terms_and_conditions %></p>
+        <% } %>
+        <p>
+          We hope this proposal meets your expectations. We would be delighted to host your event
+          and assist in making it a memorable occasion.
+        </p>
+      </div>
+
+      <div class="signature">
+        <div>Warm regards,</div>
+        <br />
+        <div>For <%= branding.name || "Restaurant" %></div>
+        <div>Authorized Signatory</div>
+      </div>
+    </div>
+  </body>
+</html>

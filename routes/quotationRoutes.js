@@ -1,5 +1,5 @@
 const express = require("express");
-const { body, param } = require("express-validator");
+const { body, param, query } = require("express-validator");
 const quotationController = require("../controllers/quotationController");
 const { requireAuth } = require("../middlewares/authMiddleware");
 
@@ -9,6 +9,11 @@ router.use(requireAuth);
 
 router.post("/init", [body("eventId").isInt({ min: 1 })], quotationController.createQuotation);
 router.get("/event/:eventId", [param("eventId").isInt({ min: 1 })], quotationController.listQuotationsByEvent);
+router.get(
+  "/:id/download",
+  [param("id").isInt({ min: 1 }), query("versionId").optional().isInt({ min: 1 })],
+  quotationController.downloadQuotation
+);
 router.get("/:id", [param("id").isInt({ min: 1 })], quotationController.getQuotation);
 
 router.post(
