@@ -12,6 +12,7 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
 - Products are food items with `name`, `image_url`, `category_id`, `food_type`, `base_price`, `description`, and `status`.
 - Admins create packages that contain products only.
 - Admins manage product categories from a dedicated `product_categories` table.
+- Admins track restaurant operating expenses in a single `restaurant_expenses` table.
 - Packages have a manual `per_person_price`.
 - Clients and events are stored separately.
 - One quotation thread belongs to one event.
@@ -33,6 +34,7 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
 - No package services in v1.
 - No booking table in v1.
 - No tax, payment, or advance-payment tracking in v1.
+- No multi-table accounting or vendor ledger in v1.
 - No separate pricing engine based on per-line totals in v1.
 - No backend-stored package grouping sections; grouping is derived in the frontend from linked product category records.
 
@@ -41,6 +43,9 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
 - `products` use a single `base_price` field.
 - `products` reference `product_categories` through `category_id` instead of storing free-text categories.
 - `product_categories` are admin-managed and used for dropdown consistency in the frontend.
+- `restaurant_expenses` use a single table with free-text `category_name`.
+- Expense records are restaurant-level only and do not link to events.
+- GST metadata is stored inline on each expense row.
 - `packages` store manual `per_person_price`.
 - `package_products` store package membership and `sort_order`.
 - `quotations` track current status, latest version, and accepted version.
@@ -52,6 +57,12 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
 
 ## API decisions
 - Keep simple CRUD-style endpoints for clients, events, products, and packages.
+- Keep expenses endpoints limited to:
+  - create expense
+  - list expenses
+  - fetch expense
+  - update expense
+  - fetch expense summary
 - Keep quotation endpoints limited to:
   - initialize quotation
   - list quotations by event
@@ -79,6 +90,10 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
 - Product `base_price` is reference data only.
 - Package `per_person_price` is entered manually.
 - Quotation version `per_person_price` is entered manually.
+- Expense `amount` is stored as entered.
+- GST rules are enforced in backend validation:
+  - when `gst = false`, `gstin`, `tax_percentage`, and `amount_is` are persisted as `NULL`
+  - when `gst = true`, `tax_percentage` and `amount_is` are required
 - Quotation subtotal is always `per_person_price * guest_count`.
 - Supported discount types:
   - `none`
@@ -103,6 +118,7 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
 - Whether package membership should later support quantities per product.
 - Whether quotation versions should later support per-line notes for imported products.
 - Whether taxes should be introduced in a future version.
+- Whether expenses should later move from free-text categories to a managed category master.
 
 ## Change log
 - Initial v1 context created.
@@ -114,3 +130,4 @@ Maintenance rule: any schema or API decision change must be reflected in this fi
   - made quotation pricing manual
 - Added explicit `excludedProductIds` support so package imports can be trimmed before saving a version.
 - Locked quotation composition rule: package import populates the same flat item list; package label is retained only when the imported package is unchanged.
+- Added single-table restaurant expense tracking with inline GST metadata and no event linkage.
