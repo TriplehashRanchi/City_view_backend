@@ -13,7 +13,7 @@ exports.handleValidationErrors = (req, res) => {
 
 exports.parsePagination = (query) => {
   const page = Math.max(Number.parseInt(query.page || "1", 10) || 1, 1);
-  const limit = Math.min(Math.max(Number.parseInt(query.limit || "1000", 10) || 1000, 1), 100);
+  const limit = Math.min(Math.max(Number.parseInt(query.limit || "1000", 10) || 1000, 1), 500);
   const offset = (page - 1) * limit;
   return { page, limit, offset };
 };
